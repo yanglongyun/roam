@@ -16,12 +16,14 @@
 - [`popup.html`](/D:/Code/meem/chrome-extension/popup.html)
 - [`popup.js`](/D:/Code/meem/chrome-extension/popup.js)
 - [`icon.svg`](/D:/Code/meem/chrome-extension/icon.svg)
+- [`icon-16.png`](/D:/Code/meem/chrome-extension/icon-16.png)
+- [`icon-32.png`](/D:/Code/meem/chrome-extension/icon-32.png)
+- [`icon-48.png`](/D:/Code/meem/chrome-extension/icon-48.png)
+- [`icon-128.png`](/D:/Code/meem/chrome-extension/icon-128.png)
 
 ## 图标说明
 
-仓库里提供了一个源图标 [`icon.svg`](/D:/Code/meem/chrome-extension/icon.svg)。
-
-当前没有直接把 `svg` 挂到 Chrome 扩展 manifest 上，因为扩展图标在不同 Chromium 版本上的 `svg` 兼容性不稳定。更稳的做法是后续从这份 `svg` 导出 16/32/48/128 的 `png` 再挂到 manifest。
+仓库里提供了一份源图标 [`icon.svg`](/D:/Code/meem/chrome-extension/icon.svg)，并已导出为 16 / 32 / 48 / 128 四个 `png` 尺寸，当前 manifest 已直接使用这些 `png`。
 
 ## 加载方式
 
