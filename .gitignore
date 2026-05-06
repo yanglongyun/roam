@@ -18,5 +18,5 @@ worker/wrangler.jsonc
 # relay legacy
 server/relay/config.js
 
-# desktop local env
-desktop/.env
+# client local config
+client/config.js

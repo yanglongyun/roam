@@ -1,7 +1,7 @@
 {
-  "name": "meem-desktop",
+  "name": "meem-client",
   "version": "0.1.0",
-  "description": "Desktop client for Meem · 漫游",
+  "description": "Client for Meem",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
