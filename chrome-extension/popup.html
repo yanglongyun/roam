@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Meem 浏览器扩展</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: "Segoe UI", sans-serif;
+      }
+
+      body {
+        margin: 0;
+        padding: 16px;
+        width: 320px;
+        background: #f4f1ea;
+        color: #1e1b18;
+      }
+
+      h1 {
+        margin: 0 0 8px;
+        font-size: 16px;
+      }
+
+      p {
+        margin: 0 0 12px;
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .stack {
+        display: grid;
+        gap: 10px;
+      }
+
+      .panel {
+        background: #fffdfa;
+        border: 1px solid #ddd1c1;
+        border-radius: 12px;
+        padding: 12px;
+      }
+
+      .row {
+        display: grid;
+        gap: 6px;
+      }
+
+      label {
+        font-size: 12px;
+        font-weight: 600;
+      }
+
+      input {
+        width: 100%;
+        box-sizing: border-box;
+        border-radius: 10px;
+        border: 1px solid #c8bba9;
+        font: inherit;
+        padding: 10px 12px;
+        background: #fffdfa;
+      }
+
+      button {
+        width: 100%;
+        box-sizing: border-box;
+        border-radius: 10px;
+        border: 1px solid #1f5eff;
+        padding: 10px 12px;
+        background: #1f5eff;
+        color: #fff;
+        font: inherit;
+        cursor: pointer;
+      }
+
+      #status {
+        min-height: 88px;
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .status-list {
+        display: grid;
+        gap: 6px;
+      }
+
+      .status-row {
+        display: grid;
+        grid-template-columns: 88px 1fr;
+        gap: 8px;
+        align-items: start;
+      }
+
+      .status-label {
+        color: #6b6258;
+      }
+
+      .status-value {
+        word-break: break-word;
+      }
+
+      .status-pill {
+        display: inline-flex;
+        align-items: center;
+        padding: 2px 10px;
+        border-radius: 999px;
+        font-weight: 600;
+      }
+
+      .status-pill.connected {
+        background: #e7f7ee;
+        color: #157347;
+      }
+
+      .status-pill.disconnected {
+        background: #fdeaea;
+        color: #b42318;
+      }
+
+      .status-pill.enabled {
+        background: #e8f0ff;
+        color: #1f5eff;
+      }
+
+      .status-pill.disabled {
+        background: #efebe5;
+        color: #7a6f62;
+      }
+
+      #save-status {
+        font-size: 12px;
+        min-height: 18px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Meem 浏览器扩展</h1>
+    <p>连接本地 Meem Client，查看当前连接状态，并管理本地连接配置。</p>
+    <div class="stack">
+      <div class="panel">
+        <div id="status">加载中...</div>
+      </div>
+      <div class="panel stack">
+        <div class="row">
+          <label for="host">本地地址</label>
+          <input id="host" type="text" placeholder="127.0.0.1" />
+        </div>
+        <div class="row">
+          <label for="port">本地端口</label>
+          <input id="port" type="number" min="1" max="65535" placeholder="17373" />
+        </div>
+        <button id="save">保存连接设置</button>
+        <div id="save-status"></div>
+      </div>
+    </div>
+    <script src="popup.js"></script>
+  </body>
+  </html>

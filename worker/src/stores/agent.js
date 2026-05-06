@@ -2,7 +2,6 @@ import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { useWsStore } from './ws';
 
-// 把一个 LLM toolCall 映射成 UI 的 tool_call item
 function mapToolCall(toolCall, key) {
     const name = toolCall?.function?.name || 'tool';
     const rawArgs = toolCall?.function?.arguments || '';
@@ -23,7 +22,6 @@ function mapToolCall(toolCall, key) {
     };
 }
 
-// db 行 → UI 扁平列表
 function parseRows(rows) {
     const list = [];
     for (const row of rows) {
@@ -40,7 +38,6 @@ function parseRows(rows) {
                 });
             }
         } else if (row.role === 'tool') {
-            // 反向扫，填最近一个 open 的 tool_call
             for (let i = list.length - 1; i >= 0; i--) {
                 if (list[i].type === 'tool_call' && list[i].result === null) {
                     list[i].result = String(row.content || '');
@@ -64,6 +61,8 @@ export const useAgentStore = defineStore('agent', () => {
     const model = ref('');
     const apiUrl = ref('');
     const apiKeyMasked = ref('');
+    const providerGroups = ref([]);
+    const providers = ref([]);
 
     const sessionId = ref('');
     const sessionTitle = ref('新会话');
@@ -94,6 +93,10 @@ export const useAgentStore = defineStore('agent', () => {
         streamingAssistantKey = '';
     }
 
+    function requestProviders() {
+        ws.sendMsg({ type: 'agent.get_providers', to: 'desktop', data: {} });
+    }
+
     function initialize() {
         if (ready) return;
         ready = true;
@@ -104,6 +107,11 @@ export const useAgentStore = defineStore('agent', () => {
             model.value = msg.data?.model || '';
             apiUrl.value = msg.data?.apiUrl || '';
             apiKeyMasked.value = msg.data?.apiKeyMasked || '';
+        });
+
+        ws.onMessage('agent.providers', (msg) => {
+            providerGroups.value = Array.isArray(msg.data?.groups) ? msg.data.groups : [];
+            providers.value = Array.isArray(msg.data?.providers) ? msg.data.providers : [];
         });
 
         ws.onMessage('agent.session', (msg) => {
@@ -144,14 +152,14 @@ export const useAgentStore = defineStore('agent', () => {
                 seenKeys.add(streamingAssistantKey);
                 messages.value.push({ role: 'assistant', content: '', _key: streamingAssistantKey, streaming: true });
             }
-            const m = messages.value.find((x) => x._key === streamingAssistantKey);
-            if (m) m.content += delta;
+            const current = messages.value.find((item) => item._key === streamingAssistantKey);
+            if (current) current.content += delta;
         });
 
         ws.onMessage('agent.tool_call', (msg) => {
             if (streamingAssistantKey) {
-                const m = messages.value.find((x) => x._key === streamingAssistantKey);
-                if (m) m.streaming = false;
+                const current = messages.value.find((item) => item._key === streamingAssistantKey);
+                if (current) current.streaming = false;
                 streamingAssistantKey = '';
             }
             const key = `ws:${Date.now()}:tc:${Math.random().toString(36).slice(2, 6)}`;
@@ -162,10 +170,10 @@ export const useAgentStore = defineStore('agent', () => {
         ws.onMessage('agent.tool_result', (msg) => {
             const content = String(msg.data?.content ?? '');
             for (let i = messages.value.length - 1; i >= 0; i--) {
-                const m = messages.value[i];
-                if (m.type === 'tool_call' && m.result === null) {
-                    m.result = content;
-                    m.status = 'ok';
+                const current = messages.value[i];
+                if (current.type === 'tool_call' && current.result === null) {
+                    current.result = content;
+                    current.status = 'ok';
                     return;
                 }
             }
@@ -173,11 +181,10 @@ export const useAgentStore = defineStore('agent', () => {
 
         ws.onMessage('agent.done', (msg) => {
             if (streamingAssistantKey) {
-                const m = messages.value.find((x) => x._key === streamingAssistantKey);
-                if (m) m.streaming = false;
+                const current = messages.value.find((item) => item._key === streamingAssistantKey);
+                if (current) current.streaming = false;
                 streamingAssistantKey = '';
             } else if (msg.data?.content) {
-                // 没有过 delta 的纯收尾消息
                 const key = `ws:${Date.now()}:assistant`;
                 seenKeys.add(key);
                 messages.value.push({ role: 'assistant', content: String(msg.data.content), _key: key });
@@ -192,6 +199,8 @@ export const useAgentStore = defineStore('agent', () => {
             running.value = false;
             streamingAssistantKey = '';
         });
+
+        requestProviders();
     }
 
     function send() {
@@ -244,12 +253,35 @@ export const useAgentStore = defineStore('agent', () => {
         });
     }
 
+    function getProvider(id) {
+        return providers.value.find((item) => item.id === id) || null;
+    }
+
     return {
-        messages, input, running,
-        configured, provider, model, apiUrl, apiKeyMasked,
-        sessionId, sessionTitle, sessions,
-        hasMore, loadedOffset,
-        initialize, send, abort, saveConfig,
-        newSession, switchSession, deleteSession, loadMore,
+        messages,
+        input,
+        running,
+        configured,
+        provider,
+        model,
+        apiUrl,
+        apiKeyMasked,
+        providerGroups,
+        providers,
+        sessionId,
+        sessionTitle,
+        sessions,
+        hasMore,
+        loadedOffset,
+        initialize,
+        send,
+        abort,
+        saveConfig,
+        newSession,
+        switchSession,
+        deleteSession,
+        loadMore,
+        requestProviders,
+        getProvider,
     };
 });

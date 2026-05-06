@@ -54,11 +54,11 @@ const dotEnvValues = loadDotEnvFile();
 
 const MEEM_URL = String(resolveValue('MEEM_URL', [dotEnvValues, configValues]) || '').trim();
 if (!MEEM_URL) {
-    console.error('Missing MEEM_URL');
-    console.error('Set it in one of these places:');
+    console.error('缺少 MEEM_URL 配置');
+    console.error('请在以下任一位置设置:');
     console.error(`  - ${configPath}`);
     console.error(`  - ${envPath}`);
-    console.error('  - environment variable MEEM_URL');
+    console.error('  - 环境变量 MEEM_URL');
     process.exit(1);
 }
 
@@ -66,7 +66,7 @@ let parsed;
 try {
     parsed = new URL(MEEM_URL);
 } catch {
-    console.error(`Invalid MEEM_URL: ${MEEM_URL}`);
+    console.error(`MEEM_URL 无效: ${MEEM_URL}`);
     process.exit(1);
 }
 
@@ -74,6 +74,8 @@ const SERVER_URL = `${parsed.protocol === 'https:' ? 'wss:' : 'ws:'}//${parsed.h
 const WEB_URL = parsed.origin;
 const SESSION_PASSWORD = String(resolveValue('SESSION_PASSWORD', [dotEnvValues, configValues]) || '').trim();
 const BROWSER_CHANNEL = String(resolveValue('BROWSER_CHANNEL', [dotEnvValues, configValues]) || 'chrome').trim() || 'chrome';
+const CHROME_EXTENSION_HOST = String(resolveValue('CHROME_EXTENSION_HOST', [dotEnvValues, configValues]) || '127.0.0.1').trim() || '127.0.0.1';
+const CHROME_EXTENSION_PORT = Number.parseInt(String(resolveValue('CHROME_EXTENSION_PORT', [dotEnvValues, configValues]) || '17373').trim(), 10) || 17373;
 const DEBUG = String(resolveValue('MEEM_DEBUG', [dotEnvValues, configValues]) || '0').trim() === '1';
 
 module.exports = {
@@ -82,5 +84,7 @@ module.exports = {
     WEB_URL,
     SESSION_PASSWORD,
     BROWSER_CHANNEL,
+    CHROME_EXTENSION_HOST,
+    CHROME_EXTENSION_PORT,
     DEBUG,
 };

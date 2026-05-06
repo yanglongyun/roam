@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "Meem 浏览器扩展",
+  "version": "0.1.0",
+  "description": "连接本地 Meem Client，并提供当前浏览器标签页能力。",
+  "permissions": [
+    "alarms",
+    "debugger",
+    "storage",
+    "tabs",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "action": {
+    "default_title": "Meem 浏览器扩展",
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}
