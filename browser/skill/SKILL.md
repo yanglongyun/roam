@@ -24,7 +24,7 @@ Prefer the browser plugin for logged-in sites, existing tabs, admin dashboards, 
 - Local bridge source: `client/server/browser`
 - Agent tools: `client/agents/browser`
 
-The local bridge listens on the configured `CHROME_EXTENSION_HOST` and `CHROME_EXTENSION_PORT`.
+The local bridge listens on the configured `BROWSER_EXTENSION_HOST` and `BROWSER_EXTENSION_PORT`.
 The extension registers with the bridge and polls for commands.
 
 ## Agent Tool Policy

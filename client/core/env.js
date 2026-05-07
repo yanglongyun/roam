@@ -91,11 +91,19 @@ const PLAYWRIGHT_BROWSER_CHANNEL = String(
     resolveValue('BROWSER_CHANNEL', [dotEnvValues, configValues]) ||
     'chrome'
 ).trim() || 'chrome';
-const CHROME_EXTENSION_HOST = String(resolveValue('CHROME_EXTENSION_HOST', [dotEnvValues, configValues]) || '127.0.0.1').trim() || '127.0.0.1';
-const CHROME_EXTENSION_PORT = Number.parseInt(String(resolveValue('CHROME_EXTENSION_PORT', [dotEnvValues, configValues]) || '17373').trim(), 10) || 17373;
+const BROWSER_EXTENSION_HOST = String(
+    resolveValue('BROWSER_EXTENSION_HOST', [dotEnvValues, configValues]) ||
+    resolveValue('CHROME_EXTENSION_HOST', [dotEnvValues, configValues]) ||
+    '127.0.0.1'
+).trim() || '127.0.0.1';
+const BROWSER_EXTENSION_PORT = Number.parseInt(String(
+    resolveValue('BROWSER_EXTENSION_PORT', [dotEnvValues, configValues]) ||
+    resolveValue('CHROME_EXTENSION_PORT', [dotEnvValues, configValues]) ||
+    '17373'
+).trim(), 10) || 17373;
 const DEBUG = String(resolveValue('MEEM_DEBUG', [dotEnvValues, configValues]) || '0').trim() === '1';
 
-export { MEEM_URL, SERVER_URL, WEB_URL, SESSION_ID, SESSION_PASSWORD, PLAYWRIGHT_BROWSER_CHANNEL, CHROME_EXTENSION_HOST, CHROME_EXTENSION_PORT, DEBUG };
+export { MEEM_URL, SERVER_URL, WEB_URL, SESSION_ID, SESSION_PASSWORD, PLAYWRIGHT_BROWSER_CHANNEL, BROWSER_EXTENSION_HOST, BROWSER_EXTENSION_PORT, DEBUG };
 export default {
     MEEM_URL,
     SERVER_URL,
@@ -103,7 +111,7 @@ export default {
     SESSION_ID,
     SESSION_PASSWORD,
     PLAYWRIGHT_BROWSER_CHANNEL,
-    CHROME_EXTENSION_HOST,
-    CHROME_EXTENSION_PORT,
+    BROWSER_EXTENSION_HOST,
+    BROWSER_EXTENSION_PORT,
     DEBUG,
 };

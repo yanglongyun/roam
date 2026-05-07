@@ -1,12 +1,12 @@
 import http from 'http';
 import { randomUUID } from 'crypto';
 import {
-    CHROME_EXTENSION_HOST,
-    CHROME_EXTENSION_PORT,
+    BROWSER_EXTENSION_HOST,
+    BROWSER_EXTENSION_PORT,
     DEBUG,
 } from '../../core/env.js';
 
-const SERVICE_URL = `http://${CHROME_EXTENSION_HOST}:${CHROME_EXTENSION_PORT}`;
+const SERVICE_URL = `http://${BROWSER_EXTENSION_HOST}:${BROWSER_EXTENSION_PORT}`;
 
 const state = {
     serverId: randomUUID(),
@@ -234,7 +234,7 @@ function start() {
 
     return new Promise((resolve, reject) => {
         server.once('error', reject);
-        server.listen(CHROME_EXTENSION_PORT, CHROME_EXTENSION_HOST, () => {
+        server.listen(BROWSER_EXTENSION_PORT, BROWSER_EXTENSION_HOST, () => {
             server.off('error', reject);
             resolve(server);
         });
