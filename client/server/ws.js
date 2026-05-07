@@ -1,7 +1,6 @@
 import WebSocket from 'ws';
 import { SERVER_URL, WEB_URL, SESSION_ID, SESSION_PASSWORD, DEBUG } from '../core/env.js';
 import { generateSessionId } from '../core/ids.js';
-import browser from './browser/index.js';
 
 const state = {
     ws: null,
@@ -31,7 +30,7 @@ function printAccessInfo() {
     const params = new URLSearchParams({ session: state.sessionId });
     const webUrl = `${WEB_URL}/guard?${params.toString()}`;
     console.log('');
-    console.log('✅ Meem 已连接');
+    console.log('✅ Roam 已连接');
     console.log('🔗 远程访问入口');
     console.log(`   ${webUrl}`);
 
@@ -40,11 +39,6 @@ function printAccessInfo() {
         console.log('🔐 访问校验密码');
         console.log(`   ${SESSION_PASSWORD}`);
     }
-
-    console.log('');
-    console.log('🌍 本地浏览器连接服务');
-    console.log(`   服务地址: ${browser.serviceUrl}`);
-    console.log('   说明: 用于连接 Roam 浏览器扩展，并转发当前浏览器标签页能力');
 
     console.log('');
     console.log('📘 使用说明');
@@ -61,7 +55,7 @@ function connect() {
 
     state.ws.on('open', () => {
         if (state.hasPrintedAccessInfo) {
-            console.log('✅ Meem 已重连');
+            console.log('✅ Roam 已重连');
         } else {
             printAccessInfo();
             state.hasPrintedAccessInfo = true;
@@ -80,7 +74,7 @@ function connect() {
     });
 
     state.ws.on('close', () => {
-        console.log('⚠️ Meem 连接已断开，3 秒后自动重连...');
+        console.log('⚠️ Roam 连接已断开，3 秒后自动重连...');
         state.reconnectTimer = setTimeout(connect, 3000);
     });
 

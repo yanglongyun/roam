@@ -18,7 +18,6 @@ async function boot() {
     });
 
     await terminal.ensureDefault();
-    await server.browser.start();
 
     server.ws.init({
         onOpen: () => {
@@ -32,12 +31,11 @@ async function boot() {
         console.log('\n🛑 正在关闭 Roam Client...');
         terminal.shutdown();
         server.ws.close();
-        server.browser.stop().finally(() => process.exit(0));
+        process.exit(0);
     });
 }
 
 boot().catch((err) => {
-    server.browser.stop().catch(() => {});
     console.error('❌ Roam Client 启动失败:', err.message);
     process.exit(1);
 });

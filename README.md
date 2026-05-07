@@ -4,17 +4,14 @@
 
 机器不暴露公网。本机 Client 主动连 Cloudflare Worker,Worker 只做中继。远程网页只连 Worker,数据不落地。
 
-> 这个仓库的前身是 [valueriver/meem](https://github.com/valueriver/meem)。后来把 Agent / LLM 那块拆掉,只保留"远程访问"内核,改名为 Roam。需要 Agent / 文档 / Todo 等本机能力,请用新的 [meem](https://github.com/valueriver/meem)(纯本机版,不用 Worker)。
+> 这个仓库的前身是 [valueriver/meem](https://github.com/valueriver/meem)。后来把 Agent / LLM / 浏览器扩展等本机能力整体拆掉,只保留"远程访问"内核,改名为 Roam。需要 Agent / 文档 / Todo 等本机能力,请用新的 [meem](https://github.com/valueriver/meem)(纯本机版,不用 Worker)。
 
 ## 项目组成
 
 ```text
 roam/
 ├─ worker/               # Cloudflare Worker + Vue 前端 + WebSocket 中继
-├─ client/               # 本机 Client,提供终端 / 文件 / 屏幕 / 浏览器 bridge
-└─ browser/
-   ├─ extension/         # Chrome 扩展,连接本机浏览器 bridge
-   └─ skill/             # 给外部 AI / 脚本使用浏览器插件的 SKILL.md
+└─ client/               # 本机 Client,提供终端 / 文件 / 屏幕
 ```
 
 运行时链路:
@@ -24,9 +21,7 @@ roam/
   ↓ https / wss
 Cloudflare Worker (中继,不存数据)
   ↓ wss
-本机 Roam Client
-  ├─ terminal / files / screen
-  └─ browser bridge ← Chrome extension ← 当前浏览器标签页
+本机 Roam Client (终端 / 文件 / 屏幕)
 ```
 
 ## 能力
@@ -34,7 +29,6 @@ Cloudflare Worker (中继,不存数据)
 - 远程终端
 - 文件浏览、读取、上传、重命名、删除
 - 屏幕截图查看
-- 当前浏览器控制(复用当前标签页和登录态)
 - 固定远程连接 session id
 
 ## 前置要求
@@ -42,7 +36,6 @@ Cloudflare Worker (中继,不存数据)
 - Node.js 20+
 - Cloudflare 账号
 - 一台运行 Roam Client 的本机电脑
-- Chrome 或 Chromium 系浏览器
 
 ## 部署 Worker
 
@@ -81,12 +74,9 @@ cp config.example.js config.js
 
 ```js
 export default {
-    CLOUDFLARE_WORKER_URL: 'https://roam.example.workers.dev', // 上面部署得到的 Worker 地址
-    SESSION_ID: '',          // 固定 session id,留空则每次启动随机
-    SESSION_PASSWORD: '',    // 远程访问密码,留空则不要密码
-    PLAYWRIGHT_BROWSER_CHANNEL: 'chrome',
-    BROWSER_EXTENSION_HOST: '127.0.0.1',
-    BROWSER_EXTENSION_PORT: '17373',
+    CLOUDFLARE_WORKER_URL: 'https://roam.example.workers.dev',
+    SESSION_ID: '',          // 留空则每次启动随机生成
+    SESSION_PASSWORD: '',    // 留空则不要密码
     DEBUG: '0',
 };
 ```
@@ -98,26 +88,16 @@ cd client
 npm start
 ```
 
-启动后控制台会输出:
+控制台会输出:
 
-- 远程访问入口(URL)
+- 远程访问入口 URL
 - 访问密码(如果配置了)
-- 本地浏览器扩展 bridge 地址
 
 如果希望电脑休眠时也尽量保持运行,macOS 可以这样启动:
 
 ```bash
 caffeinate -dimsu node /path/to/roam/client/index.js
 ```
-
-## 加载 Chrome 扩展
-
-1. 打开 `chrome://extensions`
-2. 开启开发者模式
-3. 点击 `Load unpacked`
-4. 选择 `roam/browser/extension`
-5. 打开扩展弹窗,确认本地地址和端口与 `client/config.js` 一致
-6. 点击建立连接
 
 ## 排障
 
@@ -126,11 +106,6 @@ caffeinate -dimsu node /path/to/roam/client/index.js
 - 确认 `client` 正在运行
 - 确认 `CLOUDFLARE_WORKER_URL` 是当前部署的 Worker 地址
 - 确认远程 URL 里的 `session` 和 Client 控制台打印的一致
-
-扩展显示未连接:
-
-- 确认 Client 正在运行
-- 确认扩展里的 host / port 与 `BROWSER_EXTENSION_HOST` / `BROWSER_EXTENSION_PORT` 一致
 
 ## 安全边界
 

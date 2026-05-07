@@ -86,20 +86,14 @@ if (SESSION_ID === 'default') {
     process.exit(1);
 }
 const SESSION_PASSWORD = String(resolveValue('SESSION_PASSWORD', [dotEnvValues, configValues]) || '').trim();
-const PLAYWRIGHT_BROWSER_CHANNEL = String(resolveValue('PLAYWRIGHT_BROWSER_CHANNEL', [dotEnvValues, configValues]) || 'chrome').trim() || 'chrome';
-const BROWSER_EXTENSION_HOST = String(resolveValue('BROWSER_EXTENSION_HOST', [dotEnvValues, configValues]) || '127.0.0.1').trim() || '127.0.0.1';
-const BROWSER_EXTENSION_PORT = Number.parseInt(String(resolveValue('BROWSER_EXTENSION_PORT', [dotEnvValues, configValues]) || '17373').trim(), 10) || 17373;
 const DEBUG = String(resolveValue('DEBUG', [dotEnvValues, configValues]) || '0').trim() === '1';
 
-export { CLOUDFLARE_WORKER_URL, SERVER_URL, WEB_URL, SESSION_ID, SESSION_PASSWORD, PLAYWRIGHT_BROWSER_CHANNEL, BROWSER_EXTENSION_HOST, BROWSER_EXTENSION_PORT, DEBUG };
+export { CLOUDFLARE_WORKER_URL, SERVER_URL, WEB_URL, SESSION_ID, SESSION_PASSWORD, DEBUG };
 export default {
     CLOUDFLARE_WORKER_URL,
     SERVER_URL,
     WEB_URL,
     SESSION_ID,
     SESSION_PASSWORD,
-    PLAYWRIGHT_BROWSER_CHANNEL,
-    BROWSER_EXTENSION_HOST,
-    BROWSER_EXTENSION_PORT,
     DEBUG,
 };
