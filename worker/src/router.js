@@ -20,6 +20,11 @@ const routes = [
         component: () => import('./views/FilesView.vue'),
     },
     {
+        path: '/status',
+        name: 'status',
+        component: () => import('./views/StatusView.vue'),
+    },
+    {
         path: '/screen',
         name: 'screen',
         component: () => import('./views/ScreenView.vue'),

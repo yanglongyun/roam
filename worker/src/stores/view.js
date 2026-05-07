@@ -16,6 +16,11 @@ export const useViewStore = defineStore('view', () => {
             iconPath: 'M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z',
         },
         {
+            path: '/status',
+            label: '状态',
+            iconPath: 'M3 12h4l3-9 4 18 3-9h4',
+        },
+        {
             path: '/screen',
             label: '屏幕',
             iconPath: 'M3 5h18v12H3z M8 21h8 M12 17v4',
