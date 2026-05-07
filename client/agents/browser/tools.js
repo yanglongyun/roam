@@ -52,30 +52,4 @@ export default [
             },
         },
     },
-    {
-        type: 'function',
-        function: {
-            name: 'browser_attach',
-            description: '为当前活动标签页启用浏览器控制能力。',
-            parameters: {
-                type: 'object',
-                properties: {
-                    timeoutSeconds: { type: 'integer' },
-                },
-            },
-        },
-    },
-    {
-        type: 'function',
-        function: {
-            name: 'browser_detach',
-            description: '关闭当前活动标签页的浏览器控制能力。',
-            parameters: {
-                type: 'object',
-                properties: {
-                    timeoutSeconds: { type: 'integer' },
-                },
-            },
-        },
-    },
 ];

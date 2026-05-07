@@ -67,35 +67,17 @@ async function queryActiveTab() {
   return tab;
 }
 
-async function isAttached(tabId) {
-  return attachedTabs.has(tabId);
-}
-
-async function attach(tabId) {
+async function ensureDebuggerAttached(tabId) {
   if (attachedTabs.has(tabId)) {
-    return { attached: true };
+    return;
   }
 
   await chrome.debugger.attach(getTarget(tabId), DEBUGGER_VERSION);
   attachedTabs.add(tabId);
-  return { attached: true };
-}
-
-async function detach(tabId) {
-  if (!attachedTabs.has(tabId)) {
-    return { attached: false };
-  }
-
-  await chrome.debugger.detach(getTarget(tabId));
-  attachedTabs.delete(tabId);
-  return { attached: false };
 }
 
 async function sendCommand(tabId, method, commandParams = {}) {
-  if (!attachedTabs.has(tabId)) {
-    await attach(tabId);
-  }
-
+  await ensureDebuggerAttached(tabId);
   return chrome.debugger.sendCommand(getTarget(tabId), method, commandParams);
 }
 
@@ -186,16 +168,6 @@ async function executeCommand(command, payload) {
       const tab = await chrome.tabs.create({ url, active: true });
       return { tabId: tab.id, url: tab.url || url };
     }
-    case 'attach': {
-      const tab = await queryActiveTab();
-      const result = await attach(tab.id);
-      return { tabId: tab.id, ...result };
-    }
-    case 'detach': {
-      const tab = await queryActiveTab();
-      const result = await detach(tab.id);
-      return { tabId: tab.id, ...result };
-    }
     case 'navigate': {
       const tab = await queryActiveTab();
       const url = String(payload?.url || '').trim();
@@ -256,7 +228,6 @@ async function getStatusPayload() {
     tabId: tab.id,
     tabUrl: tab.url || '',
     tabTitle: tab.title || '',
-    attached: await isAttached(tab.id),
     bridge: {
       ...bridgeStatus,
       ...bridgeConfig,

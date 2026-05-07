@@ -5,6 +5,5 @@ export default [
     '先判断任务是否只需要读取状态。纯读取任务优先使用 browser_status 或 browser_eval，不要多做导航和切换。',
     '如果需要进入新页面，可以使用 browser_open_tab 或 browser_navigate。',
     '如果需要在页面上下文执行 JavaScript，应使用 browser_eval，并传入可以直接在浏览器页面执行的代码。',
-    '只有在需要 DevTools 控制时才启用 browser_attach；任务完成后，如果继续保持附着没有价值，可以调用 browser_detach。',
     '你的目标是在尽量少的操作步骤下，稳定完成当前浏览器中的任务。',
 ].join('\n');

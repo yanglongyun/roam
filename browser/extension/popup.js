@@ -30,10 +30,6 @@ function formatStatus(response) {
       value: escapeHtml(response.bridge?.baseUrl || 'n/a')
     },
     {
-      label: '浏览器控制',
-      value: `<span class="status-pill ${response.attached ? 'enabled' : 'disabled'}">${response.attached ? '已启用' : '未启用'}</span>`
-    },
-    {
       label: '标签页 ID',
       value: escapeHtml(String(response.tabId ?? 'n/a'))
     },

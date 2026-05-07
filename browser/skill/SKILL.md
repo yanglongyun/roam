@@ -30,9 +30,6 @@ Use the smallest tool that can complete the task.
 - Use `browser_eval` for read-only page inspection or small DOM operations.
 - Use `browser_navigate` when the current active tab should move to a URL.
 - Use `browser_open_tab` when the task should not disturb the current page.
-- Use `browser_attach` only when DevTools-level control is required.
-- Use `browser_detach` when attached control is no longer useful.
-
 Do not use this plugin for destructive website actions unless the user clearly requested the action.
 When a task involves purchases, publishing, deleting, sending messages, or changing account settings, stop before the final irreversible step and ask for confirmation.
 
