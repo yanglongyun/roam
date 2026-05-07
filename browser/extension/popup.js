@@ -92,17 +92,17 @@ async function refreshStatus() {
   }
 }
 
-document.getElementById('save').addEventListener('click', async () => {
-  renderSaveStatus('正在保存...');
+document.getElementById('connect').addEventListener('click', async () => {
+  renderSaveStatus('正在连接...');
   try {
-    await send('save-config', {
+    const response = await send('connect-config', {
       host: hostInput.value.trim(),
       port: portInput.value.trim()
     });
-    renderSaveStatus('连接设置已保存。');
-    await refreshStatus();
+    renderStatus(formatStatus(response));
+    renderSaveStatus(response.bridge?.connected ? '已建立连接。' : '连接失败，请确认 Meem Client 正在运行。');
   } catch (error) {
-    renderSaveStatus(`保存失败：${error.message}`);
+    renderSaveStatus(`连接失败：${error.message}`);
   }
 });
 

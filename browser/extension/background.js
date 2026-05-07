@@ -330,6 +330,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         });
         return;
       }
+      case 'connect-config': {
+        await saveBridgeConfig(message?.host, message?.port);
+        await registerBridge();
+        await heartbeatBridge();
+        await pullAndRunNextCommand();
+        sendResponse(await getStatusPayload());
+        return;
+      }
       default: {
         throw new Error(`Unsupported message type: ${message?.type ?? 'unknown'}`);
       }
