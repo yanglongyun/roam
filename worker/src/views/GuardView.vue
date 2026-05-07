@@ -12,8 +12,8 @@ const status = computed(() => {
     if (ws.superseded) return { id: 'superseded', label: '已在另一台设备登录' };
     if (ws.invalid)    return { id: 'invalid',    label: '无效的访问链接' };
     if (ws.state === 'connected')
-                       return { id: 'connected',  label: '桌面端已连接' };
-    return                    { id: 'pending',    label: '桌面端未连接' };
+                       return { id: 'connected',  label: '客户端已连接' };
+    return                    { id: 'pending',    label: '客户端未连接' };
 });
 
 const canSubmit = computed(() =>

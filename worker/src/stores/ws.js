@@ -93,7 +93,7 @@ export const useWsStore = defineStore('ws', () => {
         if (!challengeNonce) {
             const ok = await waitForChallenge();
             if (!ok) {
-                authError.value = authClosed.value ? '认证已锁定' : '桌面端未就绪，请稍候再试';
+                authError.value = authClosed.value ? '认证已锁定' : '客户端未就绪，请稍候再试';
                 return;
             }
         }
@@ -135,7 +135,7 @@ export const useWsStore = defineStore('ws', () => {
 
         ws.onopen = () => {
             state.value = 'pending';
-            statusText.value = '等待桌面端...';
+            statusText.value = '等待客户端...';
         };
 
         ws.onmessage = (event) => {
@@ -168,14 +168,14 @@ export const useWsStore = defineStore('ws', () => {
                     const d = msg.data.devices;
                     if (d.desktop === 'connected') {
                         state.value = 'connected';
-                        statusText.value = '已连接到桌面端';
+                        statusText.value = '已连接到客户端';
                         showActions.value = authenticated.value || !requiresPassword.value;
                         if (!authenticated.value && requiresPassword.value && !challengeNonce) {
                             requestChallenge();
                         }
                     } else {
                         state.value = 'pending';
-                        statusText.value = '等待桌面端连接...';
+                        statusText.value = '等待客户端连接...';
                         showActions.value = false;
                     }
                 }

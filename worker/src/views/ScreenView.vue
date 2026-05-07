@@ -60,7 +60,7 @@ onUnmounted(() => {
 
         <main class="relative min-h-0 flex-1 overflow-auto bg-black">
             <div v-if="!ws.showActions" class="flex h-full items-center justify-center px-4 text-center text-sm text-zinc-500">
-                等待桌面端连接和认证
+                等待客户端连接和认证
             </div>
 
             <div v-else-if="screen.errorMsg" class="flex h-full items-center justify-center px-4 text-center">

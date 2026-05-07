@@ -12,10 +12,10 @@ const show = computed(() => {
 });
 
 const status = computed(() => {
-    if (ws.invalid)            return { id: 'invalid',    label: '无效的访问链接，请用桌面端刚打印的最新链接' };
+    if (ws.invalid)            return { id: 'invalid',    label: '无效的访问链接，请用客户端刚打印的最新链接' };
     if (ws.superseded)         return { id: 'superseded', label: '已在另一台设备登录，刷新可重新登录' };
     if (ws.state === 'offline')return { id: 'offline',    label: '连接已断开，重连中…' };
-    if (ws.state === 'pending')return { id: 'pending',    label: '等待桌面端上线…' };
+    if (ws.state === 'pending')return { id: 'pending',    label: '等待客户端上线…' };
     if (!ws.authenticated && ws.requiresPassword)
                                return { id: 'pending',    label: '等待认证…' };
     return                           { id: 'pending',    label: '连接中…' };

@@ -61,7 +61,7 @@ const canSend = computed(
 );
 
 const composerPlaceholder = computed(() => {
-    if (!ws.showActions) return '等待桌面端连接……';
+    if (!ws.showActions) return '等待客户端连接……';
     if (!agent.configured) return '先去右上角"设置"填 API URL / Key / Model';
     if (agent.running) return '思考中……';
     return '让 agent 做点事……';
@@ -293,7 +293,7 @@ watch(
                     <div>
                         <div class="font-serif font-bold text-[15px] tracking-tight text-ink">Agent 设置</div>
                         <div class="mt-1 text-[11px] text-faint">
-                            模型参数保存到桌面端 ~/.meem/meem.db，重启也在。
+                            模型参数保存到客户端 ~/.meem/meem.db，重启也在。
                         </div>
                     </div>
                     <button class="h-8 w-8 rounded-md flex items-center justify-center bg-bg-hi text-muted hover:opacity-80"
