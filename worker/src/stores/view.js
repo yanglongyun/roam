@@ -6,6 +6,11 @@ export const useViewStore = defineStore('view', () => {
 
     const navItems = [
         {
+            path: '/agent',
+            label: 'Agent',
+            iconPath: 'M12 3l7 4v5c0 5-3.5 8.5-7 9-3.5-.5-7-4-7-9V7l7-4 M9 12h6 M9.5 15.5h5 M9.5 8.5h5',
+        },
+        {
             path: '/terminal',
             label: '终端',
             iconPath: 'M4 17l6-6-6-6 M12 19h8',
@@ -19,11 +24,6 @@ export const useViewStore = defineStore('view', () => {
             path: '/screen',
             label: '屏幕',
             iconPath: 'M3 5h18v12H3z M8 21h8 M12 17v4',
-        },
-        {
-            path: '/agent',
-            label: 'Agent',
-            iconPath: 'M12 3l7 4v5c0 5-3.5 8.5-7 9-3.5-.5-7-4-7-9V7l7-4 M9 12h6 M9.5 15.5h5 M9.5 8.5h5',
         },
     ];
 

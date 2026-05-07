@@ -1,3 +1,8 @@
+---
+name: meem-browser
+description: Use the Meem browser plugin when an agent needs to work with the user's current browser, current tab, or logged-in web session through the Meem extension and local bridge.
+---
+
 # Meem Browser Skill
 
 This document describes how an agent should use the Meem browser plugin.
@@ -30,6 +35,7 @@ Use the smallest tool that can complete the task.
 - Use `browser_eval` for read-only page inspection or small DOM operations.
 - Use `browser_navigate` when the current active tab should move to a URL.
 - Use `browser_open_tab` when the task should not disturb the current page.
+
 Do not use this plugin for destructive website actions unless the user clearly requested the action.
 When a task involves purchases, publishing, deleting, sending messages, or changing account settings, stop before the final irreversible step and ask for confirmation.
 
