@@ -1,21 +1,14 @@
 <script setup>
 import { useRouter, useRoute } from 'vue-router';
 import { useViewStore } from '@/stores/view';
-import { useSettingsStore } from '@/stores/settings';
 
 const router = useRouter();
 const route = useRoute();
 const view = useViewStore();
-const settings = useSettingsStore();
 
 function navigateTo(path) {
     view.closeDrawer();
     if (route.path !== path) router.push(path);
-}
-
-function openSettings() {
-    view.closeDrawer();
-    settings.openSettings();
 }
 </script>
 
@@ -53,16 +46,6 @@ function openSettings() {
                 </button>
             </nav>
 
-            <div class="shrink-0 p-2 border-t border-zinc-800">
-                <button @click="openSettings"
-                    class="w-full flex items-center gap-3 px-3 py-2.5 rounded text-left text-sm text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <circle cx="12" cy="12" r="3"/>
-                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-                    </svg>
-                    <span>设置</span>
-                </button>
-            </div>
         </aside>
     </div>
 </template>
