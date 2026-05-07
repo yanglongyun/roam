@@ -1,17 +1,84 @@
+<script>
+const pending = new Map();
+let bound = false;
+
+function newReqId() {
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+function ensureBound(ws) {
+    if (bound) return;
+    bound = true;
+    ws.onMessage('status.result', (msg) => {
+        const h = pending.get(msg.data?.reqId);
+        if (!h) return;
+        pending.delete(msg.data.reqId);
+        clearTimeout(h.timer);
+        if (msg.data.ok) h.resolve(msg.data);
+        else h.reject(new Error(msg.data.error || '获取状态失败'));
+    });
+}
+</script>
+
 <script setup>
-import { computed, onMounted, onUnmounted, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useWsStore } from '@/stores/ws';
-import { useStatusStore } from '@/stores/status';
 
 const ws = useWsStore();
-const status = useStatusStore();
+ensureBound(ws);
 
-const d = computed(() => status.data);
+const data = ref(null);
+const loading = ref(false);
+const errorMsg = ref('');
+const capturedAt = ref(0);
+
+let pollTimer = null;
+
+const d = computed(() => data.value);
 
 const capturedText = computed(() => {
-    if (!status.capturedAt) return '尚未获取';
-    return new Date(status.capturedAt).toLocaleString();
+    if (!capturedAt.value) return '尚未获取';
+    return new Date(capturedAt.value).toLocaleString();
 });
+
+function callOnce(timeoutMs = 8000) {
+    return new Promise((resolve, reject) => {
+        const reqId = newReqId();
+        const timer = setTimeout(() => {
+            pending.delete(reqId);
+            reject(new Error('请求超时'));
+        }, timeoutMs);
+        pending.set(reqId, { resolve, reject, timer });
+        ws.sendMsg({ type: 'status.request', to: 'desktop', data: { reqId } });
+    });
+}
+
+async function refresh() {
+    if (!ws.canUseActions) return;
+    loading.value = true;
+    errorMsg.value = '';
+    try {
+        const res = await callOnce();
+        const { reqId, ok, ...rest } = res;
+        data.value = rest;
+        capturedAt.value = rest.capturedAt || Date.now();
+    } catch (err) {
+        errorMsg.value = err.message || String(err);
+    } finally {
+        loading.value = false;
+    }
+}
+
+function startPolling(intervalMs = 5000) {
+    stopPolling();
+    refresh();
+    pollTimer = setInterval(refresh, intervalMs);
+}
+
+function stopPolling() {
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = null;
+}
 
 function fmtBytes(n) {
     if (!Number.isFinite(n) || n <= 0) return '—';
@@ -24,13 +91,13 @@ function fmtBytes(n) {
 
 function fmtUptime(sec) {
     if (!Number.isFinite(sec) || sec <= 0) return '—';
-    const d = Math.floor(sec / 86400);
+    const dd = Math.floor(sec / 86400);
     const h = Math.floor((sec % 86400) / 3600);
     const m = Math.floor((sec % 3600) / 60);
     const parts = [];
-    if (d) parts.push(`${d}天`);
+    if (dd) parts.push(`${dd}天`);
     if (h) parts.push(`${h}小时`);
-    if (m || (!d && !h)) parts.push(`${m}分钟`);
+    if (m || (!dd && !h)) parts.push(`${m}分钟`);
     return parts.join(' ');
 }
 
@@ -41,25 +108,23 @@ function pctClass(p) {
 }
 
 onMounted(() => {
-    if (ws.canUseActions) status.startPolling(5000);
+    if (ws.canUseActions) startPolling(5000);
 });
 
 watch(() => ws.canUseActions, (ready) => {
-    if (ready) status.startPolling(5000);
-    else status.stopPolling();
+    if (ready) startPolling(5000);
+    else stopPolling();
 });
 
-onUnmounted(() => {
-    status.stopPolling();
-});
+onUnmounted(stopPolling);
 </script>
 
 <template>
     <div class="flex min-h-0 flex-1 flex-col bg-zinc-950">
         <div class="shrink-0 border-b border-zinc-800 bg-zinc-900/70 px-3 py-2 flex items-center gap-2">
             <button
-                @click="status.refresh"
-                :disabled="status.loading || !ws.canUseActions"
+                @click="refresh"
+                :disabled="loading || !ws.canUseActions"
                 class="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded border border-zinc-700 bg-zinc-800 px-3 text-sm text-zinc-100 transition-colors hover:bg-zinc-700 active:bg-zinc-600 disabled:cursor-not-allowed disabled:opacity-60"
                 title="立即刷新">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -68,10 +133,10 @@ onUnmounted(() => {
                     <path d="M3 12a9 9 0 0 1 15.5-6.3L21 8" />
                     <path d="M21 3v5h-5" />
                 </svg>
-                <span>{{ status.loading ? '获取中' : '刷新' }}</span>
+                <span>{{ loading ? '获取中' : '刷新' }}</span>
             </button>
             <div class="ml-auto text-xs text-zinc-500">
-                <span v-if="status.errorMsg" class="text-rose-300">{{ status.errorMsg }}</span>
+                <span v-if="errorMsg" class="text-rose-300">{{ errorMsg }}</span>
                 <span v-else>每 5 秒自动刷新 · {{ capturedText }}</span>
             </div>
         </div>
@@ -81,14 +146,13 @@ onUnmounted(() => {
             等待客户端连接和认证
         </main>
 
-        <main v-else-if="!d && status.loading"
+        <main v-else-if="!d && loading"
             class="flex-1 min-h-0 flex items-center justify-center text-sm text-zinc-500">
             正在获取系统状态...
         </main>
 
         <main v-else-if="d" class="flex-1 min-h-0 overflow-y-auto px-4 py-4">
             <div class="mx-auto w-full max-w-2xl space-y-4">
-                <!-- Host -->
                 <section class="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
                     <h3 class="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-3">主机</h3>
                     <dl class="grid grid-cols-2 gap-y-2 text-sm">
@@ -103,7 +167,6 @@ onUnmounted(() => {
                     </dl>
                 </section>
 
-                <!-- CPU -->
                 <section class="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
                     <div class="flex items-baseline justify-between mb-3">
                         <h3 class="text-xs font-semibold uppercase tracking-wider text-zinc-500">CPU</h3>
@@ -127,7 +190,6 @@ onUnmounted(() => {
                     </dl>
                 </section>
 
-                <!-- Memory -->
                 <section class="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
                     <div class="flex items-baseline justify-between mb-3">
                         <h3 class="text-xs font-semibold uppercase tracking-wider text-zinc-500">内存</h3>
@@ -145,7 +207,6 @@ onUnmounted(() => {
                     </dl>
                 </section>
 
-                <!-- Disk -->
                 <section v-if="d.disk" class="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
                     <div class="flex items-baseline justify-between mb-3">
                         <h3 class="text-xs font-semibold uppercase tracking-wider text-zinc-500">磁盘 ({{ d.disk.mount }})</h3>
@@ -163,7 +224,6 @@ onUnmounted(() => {
                     </dl>
                 </section>
 
-                <!-- Network -->
                 <section v-if="d.network?.length" class="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
                     <h3 class="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-3">网络</h3>
                     <ul class="text-sm space-y-1.5">
