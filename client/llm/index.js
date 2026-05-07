@@ -1,7 +1,7 @@
-const { normalizeLlmPayload } = require('./input');
-const { parseRegularResponse } = require('./output/regular');
-const { parseStreamResponse } = require('./output/stream');
-const { providers } = require('./providers');
+import { normalizeLlmPayload } from './input/index.js';
+import { parseRegularResponse } from './output/regular.js';
+import { parseStreamResponse } from './output/stream.js';
+import { providers } from './providers.js';
 
 function resolveLlmProvider({ provider, apiUrl, model } = {}) {
     const config = {
@@ -56,7 +56,8 @@ async function callLlmStream(apiUrl, apiKey, payload, { provider, signal, onDelt
     return parseStreamResponse(res, pipeline.output, onDelta);
 }
 
-module.exports = {
+export { callLlmRegular, callLlmStream, resolveLlmPipeline, resolveLlmProvider };
+export default {
     callLlmRegular,
     callLlmStream,
     resolveLlmPipeline,

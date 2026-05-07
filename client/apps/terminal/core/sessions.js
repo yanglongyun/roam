@@ -1,8 +1,8 @@
-const pty = require('node-pty');
-const path = require('path');
-const ws = require('../../../server/ws');
-const { generateTerminalId } = require('../../../core/ids');
-const { getDefaultShell, ensureDirectory, getDefaultDirectory } = require('./shell');
+import pty from 'node-pty';
+import path from 'path';
+import ws from '../../../server/ws.js';
+import { generateTerminalId } from '../../../core/ids.js';
+import { getDefaultShell, ensureDirectory, getDefaultDirectory } from './shell.js';
 
 const DEFAULT_COLS = 80;
 const DEFAULT_ROWS = 30;
@@ -195,7 +195,8 @@ function killAll() {
     }
 }
 
-module.exports = {
+export { create, get, list, activate, close, write, resize, restart, killAll, getActiveId, getMeta, broadcastList, broadcastInit, broadcastError };
+export default {
     create, get, list, activate, close, write, resize, restart, killAll,
     getActiveId, getMeta,
     broadcastList, broadcastInit, broadcastError,

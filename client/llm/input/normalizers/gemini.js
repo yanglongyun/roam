@@ -1,5 +1,6 @@
-const { openaiNormalizer } = require('./openai');
+import { openaiNormalizer } from './openai.js';
 
-module.exports = {
+export { openaiNormalizer as geminiNormalizer };
+export default {
     geminiNormalizer: openaiNormalizer,
 };

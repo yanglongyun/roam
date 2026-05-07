@@ -1,7 +1,8 @@
-const sessions = require('../core/sessions');
+import sessions from '../core/sessions.js';
 
 async function close(terminalId) {
     await sessions.close(terminalId, { ensureOne: true });
 }
 
-module.exports = { close };
+export { close };
+export default { close };

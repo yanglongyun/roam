@@ -1,13 +1,13 @@
-const { openaiNormalizer } = require('./input/normalizers/openai');
-const { deepseekNormalizer } = require('./input/normalizers/deepseek');
-const { geminiNormalizer } = require('./input/normalizers/gemini');
-const { kimiNormalizer } = require('./input/normalizers/kimi');
-const { openaiParser } = require('./output/parsers/openai');
-const { deepseekParser } = require('./output/parsers/deepseek');
-const { geminiParser } = require('./output/parsers/gemini');
-const { kimiParser } = require('./output/parsers/kimi');
-const { openaiRequester } = require('./requester/openai');
-const { claudeRequester } = require('./requester/claude');
+import { openaiNormalizer } from './input/normalizers/openai.js';
+import { deepseekNormalizer } from './input/normalizers/deepseek.js';
+import { geminiNormalizer } from './input/normalizers/gemini.js';
+import { kimiNormalizer } from './input/normalizers/kimi.js';
+import { openaiParser } from './output/parsers/openai.js';
+import { deepseekParser } from './output/parsers/deepseek.js';
+import { geminiParser } from './output/parsers/gemini.js';
+import { kimiParser } from './output/parsers/kimi.js';
+import { openaiRequester } from './requester/openai.js';
+import { claudeRequester } from './requester/claude.js';
 
 const providerGroups = [
     { id: 'default', name: '默认' },
@@ -278,7 +278,8 @@ function getProviderCatalog() {
     };
 }
 
-module.exports = {
+export { providerGroups, providers, getProviderCatalog };
+export default {
     providerGroups,
     providers,
     getProviderCatalog,

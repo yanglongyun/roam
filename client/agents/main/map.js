@@ -1,6 +1,6 @@
-const terminal = require('./functions/terminal');
+import terminal from './functions/terminal.js';
 
-module.exports = [
+export default [
     {
         name: 'terminal',
         type: 'function',

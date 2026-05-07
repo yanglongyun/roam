@@ -1,8 +1,8 @@
-const ws = require('../../server/ws');
-const { getClaudeStatus } = require('./core/status');
-const session = require('./core/session');
-const db = require('./core/db');
-const { runClaude } = require('./core/runner');
+import ws from '../../server/ws.js';
+import { getClaudeStatus } from './core/status.js';
+import session from './core/session.js';
+import db from './core/db.js';
+import { runClaude } from './core/runner.js';
 
 const runs = new Map();
 
@@ -147,4 +147,5 @@ function abortRun(sessionId) {
     }
 }
 
-module.exports = { handle, sendStatus, sendSessions };
+export { handle, sendStatus, sendSessions };
+export default { handle, sendStatus, sendSessions };

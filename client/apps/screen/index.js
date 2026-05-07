@@ -1,8 +1,8 @@
-const { execFile } = require('child_process');
-const fsp = require('fs').promises;
-const os = require('os');
-const path = require('path');
-const ws = require('../../server/ws');
+import { execFile } from 'child_process';
+import { promises as fsp } from 'fs';
+import os from 'os';
+import path from 'path';
+import ws from '../../server/ws.js';
 
 function runFile(command, args, options = {}) {
     return new Promise((resolve, reject) => {
@@ -97,4 +97,5 @@ async function handle(message) {
     }
 }
 
-module.exports = { handle };
+export { handle };
+export default { handle };

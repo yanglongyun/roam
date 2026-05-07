@@ -1,7 +1,8 @@
-const sessions = require('../core/sessions');
+import sessions from '../core/sessions.js';
 
 function resize(terminalId, cols, rows) {
     sessions.resize(terminalId, cols, rows);
 }
 
-module.exports = { resize };
+export { resize };
+export default { resize };

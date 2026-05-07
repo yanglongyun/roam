@@ -1,8 +1,8 @@
-const fsp = require('fs').promises;
-const path = require('path');
-const ws = require('../../../server/ws');
-const response = require('../core/response');
-const uploads = require('../core/uploads');
+import { promises as fsp } from 'fs';
+import path from 'path';
+import ws from '../../../server/ws.js';
+import response from '../core/response.js';
+import uploads from '../core/uploads.js';
 
 async function start(reqId, p, size, overwrite) {
     if (!overwrite) {
@@ -55,4 +55,5 @@ async function abort(reqId) {
     response.ok(reqId, { aborted: true });
 }
 
-module.exports = { start, chunk, abort };
+export { start, chunk, abort };
+export default { start, chunk, abort };

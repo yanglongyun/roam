@@ -5,4 +5,5 @@ function normalizeLlmPayload(payload, normalizer) {
     };
 }
 
-module.exports = { normalizeLlmPayload };
+export { normalizeLlmPayload };
+export default { normalizeLlmPayload };

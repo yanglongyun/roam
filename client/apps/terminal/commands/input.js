@@ -1,7 +1,8 @@
-const sessions = require('../core/sessions');
+import sessions from '../core/sessions.js';
 
 function input(terminalId, text) {
     sessions.write(terminalId, text);
 }
 
-module.exports = { input };
+export { input };
+export default { input };

@@ -10,4 +10,5 @@ function generateTerminalId() {
     return 'term-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
 
-module.exports = { generateSessionId, generateTerminalId };
+export { generateSessionId, generateTerminalId };
+export default { generateSessionId, generateTerminalId };

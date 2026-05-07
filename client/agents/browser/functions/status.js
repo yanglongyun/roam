@@ -1,5 +1,5 @@
-const { request } = require('./request');
+import { request } from './request.js';
 
-module.exports = async function status() {
+export default async function status() {
     return request('/state');
 };

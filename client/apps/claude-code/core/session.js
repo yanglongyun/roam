@@ -1,8 +1,8 @@
-const { randomUUID } = require('crypto');
-const os = require('os');
-const path = require('path');
-const fs = require('fs');
-const db = require('./db');
+import { randomUUID } from 'crypto';
+import os from 'os';
+import path from 'path';
+import fs from 'fs';
+import db from './db.js';
 
 const VALID_MODES = new Set(['acceptEdits', 'auto', 'bypassPermissions', 'default', 'dontAsk', 'plan']);
 
@@ -127,4 +127,5 @@ function getMessages(sessionId) {
     return { items };
 }
 
-module.exports = { createSession, deleteSession, getSession, listSessions, getContext, getMessages };
+export { createSession, deleteSession, getSession, listSessions, getContext, getMessages };
+export default { createSession, deleteSession, getSession, listSessions, getContext, getMessages };

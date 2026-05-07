@@ -1,4 +1,4 @@
-const sessions = require('../core/sessions');
+import sessions from '../core/sessions.js';
 
 async function run(command, terminalId) {
     const terminal = sessions.get(terminalId);
@@ -19,4 +19,5 @@ async function run(command, terminalId) {
     }
 }
 
-module.exports = { run };
+export { run };
+export default { run };

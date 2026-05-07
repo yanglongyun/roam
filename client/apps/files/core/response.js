@@ -1,4 +1,4 @@
-const ws = require('../../../server/ws');
+import ws from '../../../server/ws.js';
 
 function ok(reqId, payload = {}) {
     ws.broadcast('fs.result', { reqId, ok: true, ...payload });
@@ -9,4 +9,5 @@ function err(reqId, op, message) {
     ws.broadcast('fs.result', { reqId, ok: false, error: message });
 }
 
-module.exports = { ok, err };
+export { ok, err };
+export default { ok, err };

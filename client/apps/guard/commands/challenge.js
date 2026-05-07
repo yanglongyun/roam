@@ -1,7 +1,7 @@
-const ws = require('../../../server/ws');
-const { SESSION_PASSWORD } = require('../../../core/env');
-const nonces = require('../core/nonces');
-const lockout = require('../core/lockout');
+import ws from '../../../server/ws.js';
+import { SESSION_PASSWORD } from '../../../core/env.js';
+import nonces from '../core/nonces.js';
+import lockout from '../core/lockout.js';
 
 function issueChallenge(clientId) {
     const nonce = nonces.issue(clientId);
@@ -39,4 +39,5 @@ function request(clientId, onGrant) {
     issueChallenge(clientId);
 }
 
-module.exports = { request, issueChallenge, closeWithLockout };
+export { request, issueChallenge, closeWithLockout };
+export default { request, issueChallenge, closeWithLockout };

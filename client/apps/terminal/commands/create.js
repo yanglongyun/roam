@@ -1,5 +1,5 @@
-const sessions = require('../core/sessions');
-const ws = require('../../../server/ws');
+import sessions from '../core/sessions.js';
+import ws from '../../../server/ws.js';
 
 async function create(options = {}) {
     const terminal = await sessions.create(options);
@@ -7,4 +7,5 @@ async function create(options = {}) {
     return terminal;
 }
 
-module.exports = { create };
+export { create };
+export default { create };

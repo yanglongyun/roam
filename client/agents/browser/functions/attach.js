@@ -1,5 +1,5 @@
-const { runCommand } = require('./request');
+import { runCommand } from './request.js';
 
-module.exports = async function attach({ timeoutSeconds = 15 } = {}) {
+export default async function attach({ timeoutSeconds = 15 } = {}) {
     return runCommand('attach', {}, timeoutSeconds);
 };

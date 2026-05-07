@@ -1,4 +1,4 @@
-const path = require('path');
+import path from 'path';
 
 const MIME_MAP = {
     '.txt': 'text/plain', '.md': 'text/markdown', '.json': 'application/json',
@@ -33,4 +33,5 @@ function isTextMime(mime) {
         || mime.includes('yaml');
 }
 
-module.exports = { guessMime, isTextMime };
+export { guessMime, isTextMime };
+export default { guessMime, isTextMime };

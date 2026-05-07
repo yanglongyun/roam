@@ -1,5 +1,6 @@
-const { openaiParser } = require('./openai');
+import { openaiParser } from './openai.js';
 
-module.exports = {
+export { openaiParser as geminiParser };
+export default {
     geminiParser: openaiParser,
 };

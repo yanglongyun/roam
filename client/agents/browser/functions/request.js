@@ -1,7 +1,7 @@
-const browserExtension = require('../../../server/browser-extension');
+import browser from '../../../server/browser/index.js';
 
 async function request(path, options = {}) {
-    const response = await fetch(`${browserExtension.serviceUrl}${path}`, options);
+    const response = await fetch(`${browser.serviceUrl}${path}`, options);
     if (!response.ok) {
         throw new Error(`Browser bridge returned ${response.status}`);
     }
@@ -38,4 +38,5 @@ async function runCommand(type, payload, timeoutSeconds) {
     return waitForCommand(command.id, timeoutSeconds);
 }
 
-module.exports = { request, runCommand };
+export { request, runCommand };
+export default { request, runCommand };

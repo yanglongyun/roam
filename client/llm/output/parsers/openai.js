@@ -74,4 +74,5 @@ const openaiParser = {
     },
 };
 
-module.exports = { openaiParser };
+export { openaiParser };
+export default { openaiParser };

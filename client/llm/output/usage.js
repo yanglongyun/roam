@@ -10,4 +10,5 @@ function normalizeUsage(usage) {
     };
 }
 
-module.exports = { normalizeUsage };
+export { normalizeUsage };
+export default { normalizeUsage };

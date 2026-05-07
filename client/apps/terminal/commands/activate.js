@@ -1,7 +1,8 @@
-const sessions = require('../core/sessions');
+import sessions from '../core/sessions.js';
 
 function activate(terminalId) {
     sessions.activate(terminalId);
 }
 
-module.exports = { activate };
+export { activate };
+export default { activate };

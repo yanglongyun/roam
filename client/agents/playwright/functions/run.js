@@ -1,5 +1,5 @@
-const { chromium } = require('playwright');
-const { BROWSER_CHANNEL } = require('../../../core/env');
+import { chromium } from 'playwright';
+import { BROWSER_CHANNEL } from '../../../core/env.js';
 
 const state = {
     browser: null,
@@ -39,7 +39,7 @@ async function ensurePage() {
     return state.page;
 }
 
-module.exports = async function run({ code } = {}) {
+export default async function run({ code } = {}) {
     const fn = parseUserFunction(code);
     const page = await ensurePage();
     const result = await fn(page, state.context, state.browser);

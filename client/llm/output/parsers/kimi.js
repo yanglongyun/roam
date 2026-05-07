@@ -1,4 +1,4 @@
-const { openaiParser } = require('./openai');
+import { openaiParser } from './openai.js';
 
 const kimiParser = {
     createState() {
@@ -24,4 +24,5 @@ const kimiParser = {
     },
 };
 
-module.exports = { kimiParser };
+export { kimiParser };
+export default { kimiParser };

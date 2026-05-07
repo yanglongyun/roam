@@ -1,15 +1,23 @@
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath, pathToFileURL } from 'url';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 const configPath = path.join(__dirname, '..', 'config.js');
 const envPath = path.join(__dirname, '..', '.env');
 
-function loadConfigFile() {
+async function loadConfigFile() {
+    if (!fs.existsSync(configPath)) return {};
+
     try {
-        const loaded = require(configPath);
-        return loaded && typeof loaded === 'object' ? loaded : {};
-    } catch {
-        return {};
+        const loaded = await import(`${pathToFileURL(configPath).href}?t=${Date.now()}`);
+        const value = loaded.default || loaded;
+        return value && typeof value === 'object' ? value : {};
+    } catch (error) {
+        console.error(`配置文件加载失败: ${configPath}`);
+        console.error(error.message || String(error));
+        process.exit(1);
     }
 }
 
@@ -49,7 +57,7 @@ function resolveValue(key, sources) {
     return undefined;
 }
 
-const configValues = loadConfigFile();
+const configValues = await loadConfigFile();
 const dotEnvValues = loadDotEnvFile();
 
 const MEEM_URL = String(resolveValue('MEEM_URL', [dotEnvValues, configValues]) || '').trim();
@@ -78,7 +86,8 @@ const CHROME_EXTENSION_HOST = String(resolveValue('CHROME_EXTENSION_HOST', [dotE
 const CHROME_EXTENSION_PORT = Number.parseInt(String(resolveValue('CHROME_EXTENSION_PORT', [dotEnvValues, configValues]) || '17373').trim(), 10) || 17373;
 const DEBUG = String(resolveValue('MEEM_DEBUG', [dotEnvValues, configValues]) || '0').trim() === '1';
 
-module.exports = {
+export { MEEM_URL, SERVER_URL, WEB_URL, SESSION_PASSWORD, BROWSER_CHANNEL, CHROME_EXTENSION_HOST, CHROME_EXTENSION_PORT, DEBUG };
+export default {
     MEEM_URL,
     SERVER_URL,
     WEB_URL,

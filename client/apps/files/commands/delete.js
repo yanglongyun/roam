@@ -1,5 +1,5 @@
-const fsp = require('fs').promises;
-const response = require('../core/response');
+import { promises as fsp } from 'fs';
+import response from '../core/response.js';
 
 async function del(reqId, p, recursive) {
     const st = await fsp.stat(p);
@@ -12,4 +12,5 @@ async function del(reqId, p, recursive) {
     response.ok(reqId);
 }
 
-module.exports = { delete: del };
+export { del as delete };
+export default { delete: del };

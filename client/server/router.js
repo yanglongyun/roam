@@ -1,10 +1,10 @@
-const ws = require('./ws');
-const guard = require('../apps/guard');
-const terminal = require('../apps/terminal');
-const files = require('../apps/files');
-const screen = require('../apps/screen');
-const agents = require('../agents');
-const claudeCode = require('../apps/claude-code');
+import ws from './ws.js';
+import guard from '../apps/guard/index.js';
+import terminal from '../apps/terminal/index.js';
+import files from '../apps/files/index.js';
+import screen from '../apps/screen/index.js';
+import agents from '../agents/index.js';
+import claudeCode from '../apps/claude-code/index.js';
 
 let onDevicesChanged = () => {};
 
@@ -47,4 +47,5 @@ async function dispatch(message) {
     console.log('未识别的消息类型:', t);
 }
 
-module.exports = { dispatch, bindOnDevicesChanged };
+export { dispatch, bindOnDevicesChanged };
+export default { dispatch, bindOnDevicesChanged };

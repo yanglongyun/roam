@@ -1,5 +1,5 @@
-const run = require('./functions/run');
+import run from './functions/run.js';
 
-module.exports = [
+export default [
     { name: 'playwright_run', type: 'function', execute: run },
 ];

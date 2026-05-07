@@ -1,6 +1,6 @@
-const { runCommand } = require('./request');
+import { runCommand } from './request.js';
 
-module.exports = async function navigate({ url, timeoutSeconds = 15 } = {}) {
+export default async function navigate({ url, timeoutSeconds = 15 } = {}) {
     if (!url) throw new Error('缺少 url');
     return runCommand('navigate', { url }, timeoutSeconds);
 };

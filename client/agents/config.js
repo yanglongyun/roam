@@ -1,4 +1,4 @@
-const { getStore } = require('../db');
+import { getStore } from '../db.js';
 
 function get() {
     const store = getStore();
@@ -27,4 +27,5 @@ function set(data = {}) {
     return next;
 }
 
-module.exports = { get, set };
+export { get, set };
+export default { get, set };

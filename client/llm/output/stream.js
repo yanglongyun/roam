@@ -1,5 +1,5 @@
-const { parseJson } = require('../utils');
-const { normalizeUsage } = require('./usage');
+import { parseJson } from '../utils.js';
+import { normalizeUsage } from './usage.js';
 
 async function parseStreamResponse(res, parser, onDelta) {
     const state = parser.createState();
@@ -52,4 +52,5 @@ async function parseStreamResponse(res, parser, onDelta) {
     return message;
 }
 
-module.exports = { parseStreamResponse };
+export { parseStreamResponse };
+export default { parseStreamResponse };

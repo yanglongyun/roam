@@ -1,4 +1,4 @@
-const { getDb } = require('../../../db');
+import { getDb } from '../../../db.js';
 
 let stmts = null;
 
@@ -103,7 +103,8 @@ function listEvents(conversationId) {
     });
 }
 
-module.exports = {
+export { insertConversation, getConversation, listConversations, setTitleIfEmpty, touchConversation, updatePermissionMode, deleteConversation, appendEvent, listEvents };
+export default {
     insertConversation,
     getConversation,
     listConversations,

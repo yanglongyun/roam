@@ -1,9 +1,10 @@
-const fsp = require('fs').promises;
-const response = require('../core/response');
+import { promises as fsp } from 'fs';
+import response from '../core/response.js';
 
 async function mkdir(reqId, p) {
     await fsp.mkdir(p, { recursive: true });
     response.ok(reqId, { path: p });
 }
 
-module.exports = { mkdir };
+export { mkdir };
+export default { mkdir };

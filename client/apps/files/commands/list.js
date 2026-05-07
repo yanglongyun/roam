@@ -1,7 +1,7 @@
-const os = require('os');
-const path = require('path');
-const fsp = require('fs').promises;
-const response = require('../core/response');
+import os from 'os';
+import path from 'path';
+import { promises as fsp } from 'fs';
+import response from '../core/response.js';
 
 async function list(reqId, p, showHidden) {
     const abs = p || os.homedir();
@@ -29,4 +29,5 @@ async function list(reqId, p, showHidden) {
     response.ok(reqId, { path: abs, entries: items });
 }
 
-module.exports = { list };
+export { list };
+export default { list };

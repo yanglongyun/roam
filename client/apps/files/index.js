@@ -1,12 +1,12 @@
-const response = require('./core/response');
-const { home } = require('./commands/home');
-const { list } = require('./commands/list');
-const { stat } = require('./commands/stat');
-const { read } = require('./commands/read');
-const { delete: del } = require('./commands/delete');
-const { mkdir } = require('./commands/mkdir');
-const { rename } = require('./commands/rename');
-const upload = require('./commands/upload');
+import response from './core/response.js';
+import { home } from './commands/home.js';
+import { list } from './commands/list.js';
+import { stat } from './commands/stat.js';
+import { read } from './commands/read.js';
+import { delete as del } from './commands/delete.js';
+import { mkdir } from './commands/mkdir.js';
+import { rename } from './commands/rename.js';
+import upload from './commands/upload.js';
 
 async function handle(message) {
     const t = message.type;
@@ -35,4 +35,5 @@ async function handle(message) {
     }
 }
 
-module.exports = { handle };
+export { handle };
+export default { handle };

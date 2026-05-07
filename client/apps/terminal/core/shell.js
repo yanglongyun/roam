@@ -1,6 +1,6 @@
-const os = require('os');
-const path = require('path');
-const fs = require('fs');
+import os from 'os';
+import path from 'path';
+import fs from 'fs';
 const fsp = fs.promises;
 
 function getDefaultShell() {
@@ -22,4 +22,5 @@ async function ensureDirectory(cwd) {
     return resolved;
 }
 
-module.exports = { getDefaultShell, getDefaultDirectory, ensureDirectory };
+export { getDefaultShell, getDefaultDirectory, ensureDirectory };
+export default { getDefaultShell, getDefaultDirectory, ensureDirectory };

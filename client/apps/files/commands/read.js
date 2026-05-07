@@ -1,7 +1,7 @@
-const fsp = require('fs').promises;
-const path = require('path');
-const ws = require('../../../server/ws');
-const { guessMime } = require('../../../core/mime');
+import { promises as fsp } from 'fs';
+import path from 'path';
+import ws from '../../../server/ws.js';
+import { guessMime } from '../../../core/mime.js';
 
 const READ_CHUNK = 256 * 1024;
 const MAX_PREVIEW_BYTES = 20 * 1024 * 1024;
@@ -42,4 +42,5 @@ async function read(reqId, p, maxSize) {
     }
 }
 
-module.exports = { read };
+export { read };
+export default { read };

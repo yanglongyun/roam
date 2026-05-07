@@ -1,9 +1,9 @@
-const server = require('./server');
+import server from './server/index.js';
 
-const guard = require('./apps/guard');
-const terminal = require('./apps/terminal');
-const agents = require('./agents');
-const claudeCode = require('./apps/claude-code');
+import guard from './apps/guard/index.js';
+import terminal from './apps/terminal/index.js';
+import agents from './agents/index.js';
+import claudeCode from './apps/claude-code/index.js';
 
 async function boot() {
     console.log('🚀 正在启动 Meem Client...');
@@ -33,7 +33,7 @@ async function boot() {
     });
 
     await terminal.ensureDefault();
-    await server.browserExtension.start();
+    await server.browser.start();
 
     server.ws.init({
         onOpen: () => {
@@ -49,12 +49,12 @@ async function boot() {
         console.log('\n🛑 正在关闭 Meem Client...');
         terminal.shutdown();
         server.ws.close();
-        server.browserExtension.stop().finally(() => process.exit(0));
+        server.browser.stop().finally(() => process.exit(0));
     });
 }
 
 boot().catch((err) => {
-    server.browserExtension.stop().catch(() => {});
+    server.browser.stop().catch(() => {});
     console.error('❌ Meem Client 启动失败:', err.message);
     process.exit(1);
 });

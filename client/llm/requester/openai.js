@@ -36,9 +36,10 @@ function buildStreamRequest({ apiKey, apiUrl, payload, signal }) {
     };
 }
 
-module.exports = {
-    openaiRequester: {
-        buildRegularRequest,
-        buildStreamRequest,
-    },
+const openaiRequester = {
+    buildRegularRequest,
+    buildStreamRequest,
 };
+
+export { openaiRequester };
+export default { openaiRequester };

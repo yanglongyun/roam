@@ -1,10 +1,10 @@
-const http = require('http');
-const { randomUUID } = require('crypto');
-const {
+import http from 'http';
+import { randomUUID } from 'crypto';
+import {
     CHROME_EXTENSION_HOST,
     CHROME_EXTENSION_PORT,
     DEBUG,
-} = require('../../core/env');
+} from '../../core/env.js';
 
 const SERVICE_URL = `http://${CHROME_EXTENSION_HOST}:${CHROME_EXTENSION_PORT}`;
 
@@ -139,7 +139,7 @@ async function handle(req, res) {
     const url = new URL(req.url, `http://${req.headers.host || '127.0.0.1'}`);
 
     if (req.method === 'GET' && url.pathname === '/health') {
-        json(res, 200, { ok: true, bridge: 'chrome-extension', ...snapshot() });
+        json(res, 200, { ok: true, bridge: 'browser', ...snapshot() });
         return;
     }
 
@@ -226,7 +226,7 @@ function start() {
     server = http.createServer((req, res) => {
         handle(req, res).catch((error) => {
             if (DEBUG) {
-                console.error('[chrome-extension] request error:', error);
+                console.error('[browser] request error:', error);
             }
             json(res, 500, { ok: false, error: error.message || String(error) });
         });
@@ -258,7 +258,8 @@ function stop() {
     });
 }
 
-module.exports = {
+export { start, stop, snapshot, SERVICE_URL as serviceUrl };
+export default {
     start,
     stop,
     snapshot,

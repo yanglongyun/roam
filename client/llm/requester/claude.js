@@ -27,9 +27,10 @@ function buildStreamRequest({ apiKey, payload, signal }) {
     };
 }
 
-module.exports = {
-    claudeRequester: {
-        buildRegularRequest,
-        buildStreamRequest,
-    },
+const claudeRequester = {
+    buildRegularRequest,
+    buildStreamRequest,
 };
+
+export { claudeRequester };
+export default { claudeRequester };

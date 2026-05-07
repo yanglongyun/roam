@@ -1,7 +1,7 @@
-const path = require('path');
-const os = require('os');
-const fs = require('fs');
-const Database = require('better-sqlite3');
+import path from 'path';
+import os from 'os';
+import fs from 'fs';
+import Database from 'better-sqlite3';
 
 const DB_DIR = path.join(os.homedir(), '.meem');
 const DB_PATH = path.join(DB_DIR, 'meem.db');
@@ -158,4 +158,5 @@ function getDb() {
     return rawDb;
 }
 
-module.exports = { createStore, getStore, getDb, DB_PATH };
+export { createStore, getStore, getDb, DB_PATH };
+export default { createStore, getStore, getDb, DB_PATH };

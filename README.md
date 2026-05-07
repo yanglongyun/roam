@@ -83,7 +83,7 @@ Meem 现在同时支持两条浏览器路径。
 
 ### 1. 当前浏览器路径
 
-由根目录的 [`chrome-extension/`](/D:/Code/meem/chrome-extension) + 本地 bridge 提供。
+由根目录的 [`browser/extension/`](browser/extension) + 本地 bridge 提供。
 
 特点：
 
@@ -157,10 +157,12 @@ meem/
 │  │  ├─ browser/
 │  │  └─ playwright/
 │  ├─ llm/               # provider + input/output/requester pipeline
-│  ├─ server/            # ws / router / browser-extension bridge
+│  ├─ server/            # ws / router / browser bridge
 │  ├─ apps/              # terminal / files / screen / guard / claude-code
 │  └─ core/
-└─ chrome-extension/     # Chrome 扩展，连接本地浏览器 bridge
+└─ browser/
+   ├─ extension/         # Chrome 扩展，连接本地浏览器 bridge
+   └─ skill/             # Agent 使用浏览器插件的说明文档
 ```
 
 ---
@@ -204,7 +206,7 @@ cp config.example.js config.js
 编辑 [`client/config.js`](/D:/Code/meem/client/config.js)：
 
 ```js
-module.exports = {
+export default {
     MEEM_URL: 'https://meem.example.workers.dev',
     SESSION_PASSWORD: '',
     BROWSER_CHANNEL: 'chrome',
@@ -239,9 +241,9 @@ npm start
 
 1. 开启开发者模式
 2. 选择 `Load unpacked`
-3. 选择 [`chrome-extension/`](/D:/Code/meem/chrome-extension)
+3. 选择 [`browser/extension/`](browser/extension)
 
-扩展会连接本地 `client/server/browser-extension` bridge。
+扩展会连接本地 `client/server/browser` bridge。
 
 ### 4. 配置模型
 
@@ -282,7 +284,7 @@ npm start
 
 ### Chrome 扩展
 
-修改 [`chrome-extension/`](/D:/Code/meem/chrome-extension) 后，去 `chrome://extensions` 点刷新。
+修改 [`browser/extension/`](browser/extension) 后，去 `chrome://extensions` 点刷新。
 
 ---
 

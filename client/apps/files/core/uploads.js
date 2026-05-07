@@ -4,4 +4,5 @@ function set(reqId, record) { uploads.set(reqId, record); }
 function get(reqId) { return uploads.get(reqId); }
 function remove(reqId) { uploads.delete(reqId); }
 
-module.exports = { set, get, remove };
+export { set, get, remove };
+export default { set, get, remove };

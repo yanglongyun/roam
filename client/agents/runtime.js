@@ -1,5 +1,5 @@
-const { callLlmStream } = require('../llm');
-const { loadAgent } = require('./registry');
+import { callLlmStream } from '../llm/index.js';
+import { loadAgent } from './registry.js';
 
 function truncateToolResult(text, maxChars = 12000) {
     const raw = String(text ?? '');
@@ -110,4 +110,5 @@ async function runAgent({
     return text;
 }
 
-module.exports = { runAgent };
+export { runAgent };
+export default { runAgent };

@@ -1,5 +1,5 @@
-const { spawn } = require('child_process');
-const { claudeEnv } = require('./status');
+import { spawn } from 'child_process';
+import { claudeEnv } from './status.js';
 
 function buildArgs({ sessionId, started, permissionMode }) {
     const args = [
@@ -78,4 +78,5 @@ function runClaude({ sessionId, started, permissionMode, cwd, prompt, onEvent, o
     return child;
 }
 
-module.exports = { runClaude };
+export { runClaude };
+export default { runClaude };

@@ -1,9 +1,10 @@
-const fsp = require('fs').promises;
-const response = require('../core/response');
+import { promises as fsp } from 'fs';
+import response from '../core/response.js';
 
 async function rename(reqId, from, to) {
     await fsp.rename(from, to);
     response.ok(reqId, { from, to });
 }
 
-module.exports = { rename };
+export { rename };
+export default { rename };

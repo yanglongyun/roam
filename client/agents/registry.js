@@ -1,26 +1,37 @@
+import mainPrompt from './main/prompt.js';
+import mainTools from './main/tools.js';
+import mainMap from './main/map.js';
+import browserPrompt from './browser/prompt.js';
+import browserTools from './browser/tools.js';
+import browserMap from './browser/map.js';
+import playwrightPrompt from './playwright/prompt.js';
+import playwrightTools from './playwright/tools.js';
+import playwrightMap from './playwright/map.js';
+
 function loadAgent(agentName) {
     switch (agentName) {
         case 'main':
             return {
-                prompt: require('./main/prompt'),
-                tools: require('./main/tools'),
-                map: require('./main/map'),
+                prompt: mainPrompt,
+                tools: mainTools,
+                map: mainMap,
             };
         case 'browser':
             return {
-                prompt: require('./browser/prompt'),
-                tools: require('./browser/tools'),
-                map: require('./browser/map'),
+                prompt: browserPrompt,
+                tools: browserTools,
+                map: browserMap,
             };
         case 'playwright':
             return {
-                prompt: require('./playwright/prompt'),
-                tools: require('./playwright/tools'),
-                map: require('./playwright/map'),
+                prompt: playwrightPrompt,
+                tools: playwrightTools,
+                map: playwrightMap,
             };
         default:
             throw new Error(`未知 agent: ${agentName}`);
     }
 }
 
-module.exports = { loadAgent };
+export { loadAgent };
+export default { loadAgent };

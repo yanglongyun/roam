@@ -1,4 +1,4 @@
-module.exports = {
+export default {
     MEEM_URL: 'https://meem.example.workers.dev',
     SESSION_PASSWORD: '',
     BROWSER_CHANNEL: 'chrome',

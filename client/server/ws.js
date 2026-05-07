@@ -1,7 +1,7 @@
-const WebSocket = require('ws');
-const { SERVER_URL, WEB_URL, SESSION_PASSWORD, DEBUG } = require('../core/env');
-const { generateSessionId } = require('../core/ids');
-const browserExtension = require('./browser-extension');
+import WebSocket from 'ws';
+import { SERVER_URL, WEB_URL, SESSION_PASSWORD, DEBUG } from '../core/env.js';
+import { generateSessionId } from '../core/ids.js';
+import browser from './browser/index.js';
 
 const state = {
     ws: null,
@@ -41,7 +41,7 @@ function printAccessInfo() {
 
     console.log('');
     console.log('🌍 本地浏览器连接服务');
-    console.log(`   服务地址: ${browserExtension.serviceUrl}`);
+    console.log(`   服务地址: ${browser.serviceUrl}`);
     console.log('   说明: 用于连接 Meem 浏览器扩展，并转发当前浏览器标签页能力');
 
     console.log('');
@@ -96,7 +96,8 @@ function getSessionId() {
     return state.sessionId;
 }
 
-module.exports = {
+export { init, send, sendToClient, broadcast, close, getSessionId };
+export default {
     init,
     send,
     sendToClient,

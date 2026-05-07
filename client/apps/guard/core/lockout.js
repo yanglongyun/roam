@@ -35,4 +35,5 @@ function reset() {
     state.lockoutUntil = 0;
 }
 
-module.exports = { isLocked, remainingMinutes, recordFailure, reset };
+export { isLocked, remainingMinutes, recordFailure, reset };
+export default { isLocked, remainingMinutes, recordFailure, reset };

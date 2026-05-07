@@ -1,8 +1,8 @@
-const ws = require('../../server/ws');
-const { SESSION_PASSWORD } = require('../../core/env');
-const nonces = require('./core/nonces');
-const challenge = require('./commands/challenge');
-const submit = require('./commands/submit');
+import ws from '../../server/ws.js';
+import { SESSION_PASSWORD } from '../../core/env.js';
+import nonces from './core/nonces.js';
+import challenge from './commands/challenge.js';
+import submit from './commands/submit.js';
 
 // onGrant 由 index.js 注入：发 auth.grant + 推各 feature 的初始快照
 let onGrant = () => {};
@@ -37,4 +37,5 @@ function handle(message) {
     }
 }
 
-module.exports = { handle, sendAuthMode, bindOnGrant };
+export { handle, sendAuthMode, bindOnGrant };
+export default { handle, sendAuthMode, bindOnGrant };

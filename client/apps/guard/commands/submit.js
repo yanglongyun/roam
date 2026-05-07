@@ -1,9 +1,9 @@
-const crypto = require('crypto');
-const ws = require('../../../server/ws');
-const { SESSION_PASSWORD } = require('../../../core/env');
-const nonces = require('../core/nonces');
-const lockout = require('../core/lockout');
-const challenge = require('./challenge');
+import crypto from 'crypto';
+import ws from '../../../server/ws.js';
+import { SESSION_PASSWORD } from '../../../core/env.js';
+import nonces from '../core/nonces.js';
+import lockout from '../core/lockout.js';
+import challenge from './challenge.js';
 
 function submit(clientId, proof, onGrant) {
     if (!clientId) return;
@@ -65,4 +65,5 @@ function submit(clientId, proof, onGrant) {
     });
 }
 
-module.exports = { submit };
+export { submit };
+export default { submit };

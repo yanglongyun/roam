@@ -2,8 +2,9 @@ function normalizeMessages(messages = []) {
     return Array.isArray(messages) ? messages : [];
 }
 
-module.exports = {
-    openaiNormalizer: {
-        normalizeMessages,
-    },
+const openaiNormalizer = {
+    normalizeMessages,
 };
+
+export { openaiNormalizer };
+export default { openaiNormalizer };

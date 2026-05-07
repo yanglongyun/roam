@@ -1,10 +1,10 @@
-const sessions = require('./core/sessions');
-const { create } = require('./commands/create');
-const { activate } = require('./commands/activate');
-const { close } = require('./commands/close');
-const { input } = require('./commands/input');
-const { resize } = require('./commands/resize');
-const systemCommand = require('./commands/system_command');
+import sessions from './core/sessions.js';
+import { create } from './commands/create.js';
+import { activate } from './commands/activate.js';
+import { close } from './commands/close.js';
+import { input } from './commands/input.js';
+import { resize } from './commands/resize.js';
+import systemCommand from './commands/system_command.js';
 
 async function handle(message) {
     const t = message.type;
@@ -59,10 +59,13 @@ function sendSnapshotAll() {
     if (active) sessions.broadcastInit(active);
 }
 
-module.exports = {
-    handle,
-    sendSnapshotTo,
-    sendSnapshotAll,
-    ensureDefault: () => create({}),
-    shutdown: () => sessions.killAll(),
-};
+function ensureDefault() {
+    return create({});
+}
+
+function shutdown() {
+    return sessions.killAll();
+}
+
+export { handle, sendSnapshotTo, sendSnapshotAll, ensureDefault, shutdown };
+export default { handle, sendSnapshotTo, sendSnapshotAll, ensureDefault, shutdown };

@@ -1,8 +1,8 @@
-const ws = require('../server/ws');
-const config = require('./config');
-const session = require('./session');
-const { runAgent } = require('./runtime');
-const { getProviderCatalog } = require('../llm/providers');
+import ws from '../server/ws.js';
+import config from './config.js';
+import session from './session.js';
+import { runAgent } from './runtime.js';
+import { getProviderCatalog } from '../llm/providers.js';
 
 const runs = new Map();
 
@@ -209,14 +209,28 @@ async function handle(message) {
     }
 }
 
-module.exports = {
+const ensureSession = session.ensureActive;
+
+export {
     handle,
     sendConfig,
     sendProviders,
     sendSessions,
     sendSession,
     sendHistory,
-    ensureSession: session.ensureActive,
+    ensureSession,
+    abort,
+    abortAll,
+};
+
+export default {
+    handle,
+    sendConfig,
+    sendProviders,
+    sendSessions,
+    sendSession,
+    sendHistory,
+    ensureSession,
     abort,
     abortAll,
 };

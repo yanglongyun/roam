@@ -1,5 +1,5 @@
-const fsp = require('fs').promises;
-const response = require('../core/response');
+import { promises as fsp } from 'fs';
+import response from '../core/response.js';
 
 async function stat(reqId, p) {
     const st = await fsp.stat(p);
@@ -11,4 +11,5 @@ async function stat(reqId, p) {
     });
 }
 
-module.exports = { stat };
+export { stat };
+export default { stat };

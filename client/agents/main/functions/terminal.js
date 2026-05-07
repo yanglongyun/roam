@@ -1,8 +1,8 @@
-const os = require('os');
-const { spawn } = require('child_process');
-const { getDefaultShell, ensureDirectory, getDefaultDirectory } = require('../../../apps/terminal/core/shell');
+import os from 'os';
+import { spawn } from 'child_process';
+import { getDefaultShell, ensureDirectory, getDefaultDirectory } from '../../../apps/terminal/core/shell.js';
 
-module.exports = async function terminal({ command, cwd, timeoutSeconds = 30 } = {}, { signal } = {}) {
+export default async function terminal({ command, cwd, timeoutSeconds = 30 } = {}, { signal } = {}) {
     if (!command) throw new Error('缺少 command');
 
     const workingDir = await ensureDirectory(cwd || getDefaultDirectory());

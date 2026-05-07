@@ -1,4 +1,4 @@
-const crypto = require('crypto');
+import crypto from 'crypto';
 
 const NONCE_TTL_MS = 2 * 60_000;
 
@@ -22,4 +22,5 @@ function clear(clientId) {
     nonces.delete(clientId);
 }
 
-module.exports = { issue, take, clear };
+export { issue, take, clear };
+export default { issue, take, clear };

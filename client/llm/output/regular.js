@@ -1,4 +1,4 @@
-const { normalizeUsage } = require('./usage');
+import { normalizeUsage } from './usage.js';
 
 async function parseRegularResponse(res) {
     if (!res.ok) {
@@ -18,4 +18,5 @@ async function parseRegularResponse(res) {
     };
 }
 
-module.exports = { parseRegularResponse };
+export { parseRegularResponse };
+export default { parseRegularResponse };

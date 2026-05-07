@@ -1,5 +1,5 @@
-const crypto = require('crypto');
-const { getStore } = require('../db');
+import crypto from 'crypto';
+import { getStore } from '../db.js';
 
 const ACTIVE_KEY = 'agent.activeSessionId';
 const DEFAULT_TITLE = '新会话';
@@ -107,7 +107,8 @@ function updateTitleFromUserMessage(text) {
     getStore().updateSessionTitle(getId(), title);
 }
 
-module.exports = {
+export { ensureActive, getId, setActive, createNew, deleteSession, getMeta, listAll, loadAllRows, loadRowsPage, loadAllMessages, appendMessage, clearMessages, updateTitleFromUserMessage };
+export default {
     ensureActive,
     getId,
     setActive,

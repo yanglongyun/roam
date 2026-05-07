@@ -1,4 +1,4 @@
-const { openaiParser } = require('./openai');
+import { openaiParser } from './openai.js';
 
 const deepseekParser = {
     createState() {
@@ -24,4 +24,5 @@ const deepseekParser = {
     },
 };
 
-module.exports = { deepseekParser };
+export { deepseekParser };
+export default { deepseekParser };

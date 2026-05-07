@@ -6,4 +6,5 @@ function parseJson(text, label = 'llm.json') {
     }
 }
 
-module.exports = { parseJson };
+export { parseJson };
+export default { parseJson };
