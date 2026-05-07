@@ -192,7 +192,9 @@ watch(
                         :command="m.command"
                         :detail="m.detail"
                         :result="m.result"
-                        :status="m.status" />
+                        :status="m.status"
+                        :kind="m.kind"
+                        :sub-messages="m.subMessages || []" />
 
                     <!-- error -->
                     <div v-else-if="m.role === 'error'"

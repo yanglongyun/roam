@@ -31,6 +31,27 @@ CREATE TABLE IF NOT EXISTS messages (
 CREATE INDEX IF NOT EXISTS idx_messages_session_id   ON messages(session_id, id);
 CREATE INDEX IF NOT EXISTS idx_sessions_updated_desc ON sessions(updated_at DESC);
 
+CREATE TABLE IF NOT EXISTS agent_messages (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id          TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    run_id              TEXT NOT NULL,
+    parent_run_id       TEXT,
+    parent_tool_call_id TEXT,
+    agent_name          TEXT NOT NULL,
+    message             TEXT NOT NULL,
+    meta                TEXT,
+    created_at          TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_messages_session_id
+ON agent_messages(session_id, id);
+
+CREATE INDEX IF NOT EXISTS idx_agent_messages_run_id
+ON agent_messages(run_id, id);
+
+CREATE INDEX IF NOT EXISTS idx_agent_messages_parent_run_id
+ON agent_messages(parent_run_id, id);
+
 `;
 
 let rawDb = null;
@@ -65,6 +86,11 @@ function createStore() {
         deleteSession:      db.prepare('DELETE FROM sessions WHERE id = ?'),
         deleteMessages:     db.prepare('DELETE FROM messages WHERE session_id = ?'),
         insertMessage:      db.prepare('INSERT INTO messages (session_id, message, meta) VALUES (?, ?, ?)'),
+        insertAgentMessage: db.prepare(`
+            INSERT INTO agent_messages (
+                session_id, run_id, parent_run_id, parent_tool_call_id, agent_name, message, meta
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        `),
         countMessages:      db.prepare('SELECT COUNT(*) AS n FROM messages WHERE session_id = ?'),
         selectMessagesPage: db.prepare(`
             SELECT id, message, meta, created_at FROM messages
@@ -72,6 +98,11 @@ function createStore() {
         `),
         selectAllMessages:  db.prepare(`
             SELECT id, message, meta, created_at FROM messages
+            WHERE session_id = ? ORDER BY id ASC
+        `),
+        selectAgentMessages: db.prepare(`
+            SELECT id, run_id, parent_run_id, parent_tool_call_id, agent_name, message, meta, created_at
+            FROM agent_messages
             WHERE session_id = ? ORDER BY id ASC
         `),
     };
@@ -108,12 +139,37 @@ function createStore() {
         },
         appendMessage(sessionId, message, meta = null) {
             const payload = typeof message === 'string' ? message : JSON.stringify(message);
-            stmts.insertMessage.run(sessionId, payload, meta ? JSON.stringify(meta) : null);
+            const result = stmts.insertMessage.run(sessionId, payload, meta ? JSON.stringify(meta) : null);
             stmts.touchSession.run(sessionId);
+            return result.lastInsertRowid;
+        },
+        appendAgentMessage(sessionId, { runId, parentRunId = null, parentToolCallId = null, agentName, message, meta = null }) {
+            const payload = typeof message === 'string' ? message : JSON.stringify(message);
+            const fullMeta = {
+                ...(meta || {}),
+                runId,
+                parentRunId,
+                parentToolCallId,
+                agentName,
+            };
+            const result = stmts.insertAgentMessage.run(
+                sessionId,
+                runId,
+                parentRunId,
+                parentToolCallId,
+                agentName,
+                payload,
+                JSON.stringify(fullMeta)
+            );
+            stmts.touchSession.run(sessionId);
+            return result.lastInsertRowid;
         },
         // 全量（小会话用）
         loadMessages(sessionId) {
             return stmts.selectAllMessages.all(sessionId);
+        },
+        loadAgentMessages(sessionId) {
+            return stmts.selectAgentMessages.all(sessionId);
         },
         // 分页：按 id 倒序取第 offset~offset+limit 条（即从后往前数 limit 条），再反转为正序
         loadMessagesPage(sessionId, { offset = 0, limit = 50 } = {}) {

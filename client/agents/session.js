@@ -77,6 +77,10 @@ function loadAllRows() {
     return getStore().loadMessages(getId());
 }
 
+function loadAllAgentRows() {
+    return getStore().loadAgentMessages(getId());
+}
+
 function loadRowsPage({ offset = 0, limit = 50 } = {}) {
     const id = getId();
     const rows = getStore().loadMessagesPage(id, { offset, limit });
@@ -91,7 +95,18 @@ function loadAllMessages() {
 }
 
 function appendMessage(message, meta = null) {
-    getStore().appendMessage(getId(), message, meta);
+    return getStore().appendMessage(getId(), message, meta);
+}
+
+function appendAgentMessage({ agentName, runId, parentRunId = null, parentToolCallId = null, message, meta = null }) {
+    return getStore().appendAgentMessage(getId(), {
+        agentName,
+        runId,
+        parentRunId,
+        parentToolCallId,
+        message,
+        meta,
+    });
 }
 
 function clearMessages() {
@@ -107,7 +122,7 @@ function updateTitleFromUserMessage(text) {
     getStore().updateSessionTitle(getId(), title);
 }
 
-export { ensureActive, getId, setActive, createNew, deleteSession, getMeta, listAll, loadAllRows, loadRowsPage, loadAllMessages, appendMessage, clearMessages, updateTitleFromUserMessage };
+export { ensureActive, getId, setActive, createNew, deleteSession, getMeta, listAll, loadAllRows, loadAllAgentRows, loadRowsPage, loadAllMessages, appendMessage, appendAgentMessage, clearMessages, updateTitleFromUserMessage };
 export default {
     ensureActive,
     getId,
@@ -117,9 +132,11 @@ export default {
     getMeta,
     listAll,
     loadAllRows,
+    loadAllAgentRows,
     loadRowsPage,
     loadAllMessages,
     appendMessage,
+    appendAgentMessage,
     clearMessages,
     updateTitleFromUserMessage,
 };

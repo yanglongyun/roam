@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { callLlmStream } from '../llm/index.js';
 import { loadAgent } from './registry.js';
 
@@ -19,6 +20,9 @@ async function executeTool(tool, args, ctx) {
             config: ctx.config,
             messages: [{ role: 'user', content: task }],
             signal: ctx.signal,
+            hooks: ctx.hooks,
+            parentRunId: ctx.runId,
+            parentToolCallId: ctx.toolCall?.id || null,
         });
         return typeof result === 'string' ? result : JSON.stringify(result, null, 2);
     }
@@ -38,11 +42,16 @@ async function runAgent({
     signal,
     onDelta,
     hooks,
+    runId = crypto.randomUUID(),
+    parentRunId = null,
+    parentToolCallId = null,
 }) {
     const agent = loadAgent(agentName);
+    const runInfo = { agentName, runId, parentRunId, parentToolCallId };
     const convo = [];
     if (agent.prompt) convo.push({ role: 'system', content: agent.prompt });
     convo.push(...messages);
+    hooks?.onRunStart?.(runInfo, messages);
 
     for (let round = 0; round < 24; round += 1) {
         const message = await callLlmStream(config.apiUrl, config.apiKey, {
@@ -66,10 +75,10 @@ async function runAgent({
             }
 
             convo.push(assistantMsg);
-            hooks?.onAssistantToolCalls?.(assistantMsg);
+            hooks?.onAssistantToolCalls?.(assistantMsg, runInfo);
 
             for (const toolCall of message.tool_calls) {
-                hooks?.onToolCall?.(toolCall);
+                hooks?.onToolCall?.(toolCall, runInfo);
                 let resultText;
                 try {
                     const tool = agent.map.find((item) => item.name === toolCall.function.name);
@@ -78,6 +87,9 @@ async function runAgent({
                         config,
                         signal,
                         agentName,
+                        runId,
+                        hooks,
+                        toolCall,
                     }));
                 } catch (error) {
                     resultText = `tool error: ${error.message}`;
@@ -89,7 +101,7 @@ async function runAgent({
                     content: resultText,
                 };
                 convo.push(toolMsg);
-                hooks?.onToolResult?.(toolCall, resultText, toolMsg);
+                hooks?.onToolResult?.(toolCall, resultText, toolMsg, runInfo);
             }
             continue;
         }
@@ -101,12 +113,12 @@ async function runAgent({
         if (message.reasoning_content !== undefined) {
             finalMessage.reasoning_content = message.reasoning_content;
         }
-        hooks?.onFinalMessage?.(finalMessage, message.usage || null);
+        hooks?.onFinalMessage?.(finalMessage, message.usage || null, runInfo);
         return finalMessage.content;
     }
 
     const text = '(达到最大执行轮次限制)';
-    hooks?.onFinalMessage?.({ role: 'assistant', content: text }, null);
+    hooks?.onFinalMessage?.({ role: 'assistant', content: text }, null, runInfo);
     return text;
 }
 

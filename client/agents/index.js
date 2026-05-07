@@ -13,6 +13,23 @@ function serializeRow(row) {
     return { _id: row.id, _meta: meta, ...message };
 }
 
+function serializeAgentRow(row) {
+    let message = {};
+    try { message = JSON.parse(row.message); } catch {}
+    const meta = row.meta ? (() => { try { return JSON.parse(row.meta); } catch { return {}; } })() : {};
+    return {
+        _id: row.id,
+        _meta: {
+            ...meta,
+            runId: row.run_id,
+            parentRunId: row.parent_run_id,
+            parentToolCallId: row.parent_tool_call_id,
+            agentName: row.agent_name,
+        },
+        ...message,
+    };
+}
+
 function sendConfig(target = 'web') {
     const cfg = config.get();
     const data = {
@@ -49,6 +66,7 @@ function sendHistory(target = 'web', { offset = 0, limit = 50 } = {}) {
     const data = {
         session: session.getMeta(),
         messages: rows.map(serializeRow),
+        agentMessages: session.loadAllAgentRows().map(serializeAgentRow),
         offset,
         limit,
         total,
@@ -71,6 +89,32 @@ function abortAll() {
         active.abortController.abort();
     }
     runs.clear();
+}
+
+function appendAgentTraceMessage(clientId, message, runInfo, meta = {}) {
+    if (!runInfo?.agentName || runInfo.agentName === 'main') return null;
+    const id = session.appendAgentMessage({
+        agentName: runInfo.agentName,
+        runId: runInfo.runId,
+        parentRunId: runInfo.parentRunId,
+        parentToolCallId: runInfo.parentToolCallId,
+        message,
+        meta,
+    });
+    ws.sendToClient(clientId, 'agent.sub_message', {
+        message: {
+            _id: id,
+            _meta: {
+                ...meta,
+                agentName: runInfo.agentName,
+                runId: runInfo.runId,
+                parentRunId: runInfo.parentRunId,
+                parentToolCallId: runInfo.parentToolCallId,
+            },
+            ...message,
+        },
+    });
+    return id;
 }
 
 async function chat(clientId, input) {
@@ -105,22 +149,45 @@ async function chat(clientId, input) {
             signal: abortController.signal,
             onDelta: (delta) => ws.sendToClient(clientId, 'agent.delta', { delta }),
             hooks: {
-                onAssistantToolCalls(assistantMsg) {
-                    session.appendMessage(assistantMsg);
+                onRunStart(runInfo, messages) {
+                    if (runInfo.agentName === 'main') return;
+                    for (const message of messages || []) {
+                        appendAgentTraceMessage(clientId, message, runInfo, { event: 'input' });
+                    }
                 },
-                onToolCall(toolCall) {
-                    ws.sendToClient(clientId, 'agent.tool_call', { toolCall });
+                onAssistantToolCalls(assistantMsg, runInfo) {
+                    if (runInfo.agentName === 'main') {
+                        session.appendMessage(assistantMsg, runInfo);
+                    } else {
+                        appendAgentTraceMessage(clientId, assistantMsg, runInfo, { event: 'assistant_tool_calls' });
+                    }
                 },
-                onToolResult(toolCall, resultText, toolMsg) {
-                    session.appendMessage(toolMsg);
-                    ws.sendToClient(clientId, 'agent.tool_result', {
-                        toolCallId: toolCall.id,
-                        content: resultText,
-                    });
+                onToolCall(toolCall, runInfo) {
+                    if (runInfo.agentName === 'main') {
+                        ws.sendToClient(clientId, 'agent.tool_call', { toolCall, runInfo });
+                    }
                 },
-                onFinalMessage(finalMsg, usage) {
-                    session.appendMessage(finalMsg);
-                    ws.sendToClient(clientId, 'agent.done', { content: finalMsg.content, usage });
+                onToolResult(toolCall, resultText, toolMsg, runInfo) {
+                    if (runInfo.agentName === 'main') {
+                        session.appendMessage(toolMsg, runInfo);
+                        ws.sendToClient(clientId, 'agent.tool_result', {
+                            toolCallId: toolCall.id,
+                            content: resultText,
+                        });
+                    } else {
+                        appendAgentTraceMessage(clientId, toolMsg, runInfo, {
+                            event: 'tool_result',
+                            toolCallId: toolCall.id,
+                        });
+                    }
+                },
+                onFinalMessage(finalMsg, usage, runInfo) {
+                    if (runInfo.agentName === 'main') {
+                        session.appendMessage(finalMsg, { ...runInfo, usage });
+                        ws.sendToClient(clientId, 'agent.done', { content: finalMsg.content, usage });
+                    } else {
+                        appendAgentTraceMessage(clientId, finalMsg, runInfo, { event: 'final', usage });
+                    }
                 },
             },
         });

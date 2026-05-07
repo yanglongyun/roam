@@ -7,22 +7,60 @@ function mapToolCall(toolCall, key) {
     const rawArgs = toolCall?.function?.arguments || '';
     let args = null;
     try { args = JSON.parse(rawArgs); } catch {}
-    const title = args?.description || args?.reason || name;
-    const command = name === 'terminal_exec' ? (args?.command || '') : '';
+    const isAgent = name === 'browser' || name === 'playwright';
+    const title = isAgent ? `Agent: ${name}` : (args?.description || args?.reason || name);
+    const command = name === 'terminal' ? (args?.command || '') : '';
     const detail = command ? '' : (args ? JSON.stringify(args, null, 2) : rawArgs);
     return {
         type: 'tool_call',
+        kind: isAgent ? 'agent' : 'tool',
+        toolName: name,
+        toolCallId: toolCall?.id || '',
         toolCall,
         title,
         command,
         detail,
         result: null,
+        subMessages: [],
         status: 'running',
         _key: key,
     };
 }
 
-function parseRows(rows) {
+function mapAgentMessage(row) {
+    const meta = row._meta || {};
+    return {
+        role: row.role || 'message',
+        content: row.content ?? '',
+        toolCalls: Array.isArray(row.tool_calls) ? row.tool_calls : [],
+        agentName: meta.agentName || '',
+        runId: meta.runId || '',
+        parentRunId: meta.parentRunId || '',
+        parentToolCallId: meta.parentToolCallId || '',
+        event: meta.event || '',
+        _key: row._id != null ? `agent:${row._id}` : `agent:${Date.now()}:${Math.random().toString(36).slice(2, 6)}`,
+    };
+}
+
+function attachAgentMessages(list, rows = []) {
+    const byToolCallId = new Map();
+    for (const item of list) {
+        if (item.type === 'tool_call' && item.toolCallId) {
+            byToolCallId.set(item.toolCallId, item);
+        }
+    }
+    for (const row of rows) {
+        const mapped = mapAgentMessage(row);
+        const target = byToolCallId.get(mapped.parentToolCallId);
+        if (!target) continue;
+        target.subMessages ||= [];
+        if (!target.subMessages.some((item) => item._key === mapped._key)) {
+            target.subMessages.push(mapped);
+        }
+    }
+}
+
+function parseRows(rows, agentRows = []) {
     const list = [];
     for (const row of rows) {
         const base = row._id != null ? `db:${row._id}` : null;
@@ -47,6 +85,7 @@ function parseRows(rows) {
             }
         }
     }
+    attachAgentMessages(list, agentRows);
     return list;
 }
 
@@ -126,6 +165,7 @@ export const useAgentStore = defineStore('agent', () => {
 
         ws.onMessage('agent.history', (msg) => {
             const list = Array.isArray(msg.data?.messages) ? msg.data.messages : [];
+            const agentRows = Array.isArray(msg.data?.agentMessages) ? msg.data.agentMessages : [];
             const isInitial = (msg.data?.offset || 0) === 0;
             if (isInitial) {
                 resetView();
@@ -133,9 +173,9 @@ export const useAgentStore = defineStore('agent', () => {
                     sessionId.value = msg.data.session.id || '';
                     sessionTitle.value = msg.data.session.title || '新会话';
                 }
-                addUnique(parseRows(list));
+                addUnique(parseRows(list, agentRows));
             } else {
-                addUnique(parseRows(list), { prepend: true });
+                addUnique(parseRows(list, agentRows), { prepend: true });
             }
             hasMore.value = Boolean(msg.data?.hasMore);
             loadedOffset.value = (msg.data?.offset || 0) + list.length;
@@ -176,6 +216,20 @@ export const useAgentStore = defineStore('agent', () => {
                     current.status = 'ok';
                     return;
                 }
+            }
+        });
+
+        ws.onMessage('agent.sub_message', (msg) => {
+            const mapped = mapAgentMessage(msg.data?.message || {});
+            for (let i = messages.value.length - 1; i >= 0; i--) {
+                const current = messages.value[i];
+                if (current.type !== 'tool_call') continue;
+                if (current.toolCallId !== mapped.parentToolCallId) continue;
+                current.subMessages ||= [];
+                if (!current.subMessages.some((item) => item._key === mapped._key)) {
+                    current.subMessages.push(mapped);
+                }
+                return;
             }
         });
 
