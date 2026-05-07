@@ -4,7 +4,6 @@ import terminal from '../apps/terminal/index.js';
 import files from '../apps/files/index.js';
 import screen from '../apps/screen/index.js';
 import agents from '../agents/index.js';
-import claudeCode from '../apps/claude-code/index.js';
 
 let onDevicesChanged = () => {};
 
@@ -39,9 +38,6 @@ async function dispatch(message) {
     }
     if (t.startsWith('agent.')) {
         if (await agents.handle(message)) return;
-    }
-    if (t.startsWith('cc.')) {
-        if (await claudeCode.handle(message)) return;
     }
 
     console.log('未识别的消息类型:', t);

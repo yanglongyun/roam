@@ -3,7 +3,6 @@ import server from './server/index.js';
 import guard from './apps/guard/index.js';
 import terminal from './apps/terminal/index.js';
 import agents from './agents/index.js';
-import claudeCode from './apps/claude-code/index.js';
 
 async function boot() {
     console.log('🚀 正在启动 Meem Client...');
@@ -15,8 +14,6 @@ async function boot() {
         agents.sendProviders(`web:${clientId}`);
         agents.sendSessions(`web:${clientId}`);
         agents.sendHistory(`web:${clientId}`);
-        claudeCode.sendStatus(`web:${clientId}`);
-        claudeCode.sendSessions(`web:${clientId}`);
     });
 
     server.router.bindOnDevicesChanged((devices) => {
@@ -28,8 +25,6 @@ async function boot() {
         agents.sendSessions('web');
         agents.sendHistory('web');
         guard.sendAuthMode();
-        claudeCode.sendStatus('web');
-        claudeCode.sendSessions('web');
     });
 
     await terminal.ensureDefault();

@@ -31,27 +31,6 @@ CREATE TABLE IF NOT EXISTS messages (
 CREATE INDEX IF NOT EXISTS idx_messages_session_id   ON messages(session_id, id);
 CREATE INDEX IF NOT EXISTS idx_sessions_updated_desc ON sessions(updated_at DESC);
 
-CREATE TABLE IF NOT EXISTS cc_conversations (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    session_id      TEXT NOT NULL UNIQUE,
-    cwd             TEXT NOT NULL DEFAULT '',
-    permission_mode TEXT NOT NULL DEFAULT 'default',
-    title           TEXT NOT NULL DEFAULT '',
-    message_count   INTEGER NOT NULL DEFAULT 0,
-    created_at      TEXT DEFAULT (datetime('now')),
-    updated_at      TEXT DEFAULT (datetime('now'))
-);
-CREATE INDEX IF NOT EXISTS idx_cc_convs_updated ON cc_conversations(updated_at DESC);
-
-CREATE TABLE IF NOT EXISTS cc_events (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    conversation_id INTEGER NOT NULL REFERENCES cc_conversations(id),
-    seq             INTEGER NOT NULL,
-    kind            TEXT NOT NULL,
-    raw_json        TEXT NOT NULL,
-    ts              TEXT DEFAULT (datetime('now'))
-);
-CREATE INDEX IF NOT EXISTS idx_cc_events_conv_seq ON cc_events(conversation_id, seq);
 `;
 
 let rawDb = null;

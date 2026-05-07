@@ -29,11 +29,6 @@ const routes = [
         name: 'agent',
         component: () => import('./views/AgentView.vue'),
     },
-    {
-        path: '/claude-code',
-        name: 'claude-code',
-        component: () => import('./views/ClaudeCodeView.vue'),
-    },
     { path: '/:pathMatch(.*)*', redirect: (to) => ({ path: '/guard', query: to.query }) },
 ];
 

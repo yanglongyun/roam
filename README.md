@@ -54,7 +54,7 @@ client/
 ├─ agents/   # 多 agent 核心层，负责任务理解、委派、工具编排
 ├─ llm/      # 大模型兼容抽象层，维护 provider catalog 与请求/解析流水线
 ├─ server/   # 纯服务层，负责 ws、路由、本地浏览器扩展 bridge
-├─ apps/     # 具体能力层，如 terminal / files / screen / guard / claude-code
+├─ apps/     # 具体能力层，如 terminal / files / screen / guard
 ├─ core/     # 少量共享基础模块
 ├─ db.js
 └─ index.js
@@ -158,7 +158,7 @@ meem/
 │  │  └─ playwright/
 │  ├─ llm/               # provider + input/output/requester pipeline
 │  ├─ server/            # ws / router / browser bridge
-│  ├─ apps/              # terminal / files / screen / guard / claude-code
+  │  ├─ apps/              # terminal / files / screen / guard
 │  └─ core/
 └─ browser/
    ├─ extension/         # Chrome 扩展，连接本地浏览器 bridge
