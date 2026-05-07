@@ -9,6 +9,7 @@ const state = {
     onMessage: null,
     onOpen: null,
     reconnectTimer: null,
+    hasPrintedAccessInfo: false,
 };
 
 function send(message) {
@@ -59,7 +60,12 @@ function connect() {
     state.ws = new WebSocket(url);
 
     state.ws.on('open', () => {
-        printAccessInfo();
+        if (state.hasPrintedAccessInfo) {
+            console.log('✅ Meem 已重连');
+        } else {
+            printAccessInfo();
+            state.hasPrintedAccessInfo = true;
+        }
         state.onOpen?.();
     });
 
