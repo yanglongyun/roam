@@ -1,11 +1,11 @@
 ---
-name: meem-browser
-description: Use the Meem browser plugin when an agent needs to work with the user's current browser, current tab, or logged-in web session through the Meem extension and local bridge.
+name: roam-browser
+description: Use the Roam browser bridge when an external agent needs to work with the user's current browser, current tab, or logged-in web session through the Roam extension and local bridge.
 ---
 
-# Meem Browser Skill
+# Roam Browser Skill
 
-This document describes how an agent should use the Meem browser plugin.
+This document describes how an external agent (running outside Roam) should drive the user's current browser through the Roam Chrome extension and the local bridge in `client/server/browser`.
 
 ## Purpose
 
@@ -22,7 +22,6 @@ Prefer the browser plugin for logged-in sites, existing tabs, admin dashboards, 
 
 - Extension source: `browser/extension`
 - Local bridge source: `client/server/browser`
-- Agent tools: `client/agents/browser`
 
 The local bridge listens on the configured `BROWSER_EXTENSION_HOST` and `BROWSER_EXTENSION_PORT`.
 The extension registers with the bridge and polls for commands.

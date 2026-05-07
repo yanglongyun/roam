@@ -24,11 +24,6 @@ const routes = [
         name: 'screen',
         component: () => import('./views/ScreenView.vue'),
     },
-    {
-        path: '/agent',
-        name: 'agent',
-        component: () => import('./views/AgentView.vue'),
-    },
     { path: '/:pathMatch(.*)*', redirect: (to) => ({ path: '/guard', query: to.query }) },
 ];
 

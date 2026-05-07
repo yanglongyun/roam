@@ -1,16 +1,14 @@
 {
-  "name": "meem-client",
-  "version": "0.1.0",
-  "description": "Client for Meem",
+  "name": "roam-client",
+  "version": "0.2.0",
+  "description": "Roam client — 远程访问本机能力(终端 / 文件 / 屏幕)",
   "type": "module",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "better-sqlite3": "^11.3.0",
     "node-pty": "^1.0.0",
-    "playwright": "^1.54.2",
     "ws": "^8.14.0"
   }
 }
