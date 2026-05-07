@@ -18,7 +18,10 @@ const searchInputEl = ref(null);
 const showSearch = ref(false);
 const showSortMenu = ref(false);
 
-function triggerUpload() { fileInputEl.value?.click(); }
+function triggerUpload() {
+    if (!ws.canUseActions) return;
+    fileInputEl.value?.click();
+}
 function onFileSelect(e) {
     const list = e.target.files;
     if (list?.length) files.uploadFiles(list);
@@ -36,7 +39,7 @@ async function toggleSearch() {
 }
 
 function openInTerminal() {
-    if (!files.cwd) return;
+    if (!ws.canUseActions || !files.cwd) return;
     const escaped = files.cwd.replace(/"/g, '\\"');
     ws.sendMsg({
         type: 'data.input',
@@ -68,7 +71,7 @@ function pickSort(by) {
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
             </button>
 
-            <button @click="files.refresh" class="tb-btn" title="刷新">
+            <button @click="files.refresh" class="tb-btn" :disabled="!ws.canUseActions" title="刷新">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/></svg>
             </button>
 
@@ -94,25 +97,26 @@ function pickSort(by) {
             </div>
 
             <button @click="files.toggleHidden" class="tb-btn"
+                :disabled="!ws.canUseActions"
                 :class="{ 'is-active': files.showHidden }" title="显示/隐藏 dot 文件">
                 <span class="text-[11px] font-mono">.*</span>
             </button>
 
             <div class="w-px h-5 mx-1 bg-line"></div>
 
-            <button @click="openInTerminal" class="tb-btn" title="在终端 cd 到此目录">
+            <button @click="openInTerminal" class="tb-btn" :disabled="!ws.canUseActions" title="在终端 cd 到此目录">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
             </button>
 
-            <button @click="triggerUpload" class="tb-btn" title="上传到当前目录">
+            <button @click="triggerUpload" class="tb-btn" :disabled="!ws.canUseActions" title="上传到当前目录">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/></svg>
             </button>
 
-            <button @click="files.createFolder" class="tb-btn" title="新建目录">
+            <button @click="files.createFolder" class="tb-btn" :disabled="!ws.canUseActions" title="新建目录">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
             </button>
 
-            <button @click="files.createFile" class="tb-btn" title="新建空文件">
+            <button @click="files.createFile" class="tb-btn" :disabled="!ws.canUseActions" title="新建空文件">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="13" x2="12" y2="19"/><line x1="9" y1="16" x2="15" y2="16"/></svg>
             </button>
 
@@ -141,15 +145,16 @@ function pickSort(by) {
 
         <!-- 面包屑 -->
         <div class="flex flex-wrap items-center gap-x-0.5 gap-y-1 px-3 py-2 border-t border-line">
-            <button @click="files.goUp" class="tb-btn-sm" title="上一级">
+            <button @click="files.goUp" class="tb-btn-sm" :disabled="!ws.canUseActions" title="上一级">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
             </button>
-            <button @click="files.goHome" class="tb-btn-sm" title="主目录">
+            <button @click="files.goHome" class="tb-btn-sm" :disabled="!ws.canUseActions" title="主目录">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg>
             </button>
             <div class="w-px h-4 mx-1 bg-line"></div>
             <template v-for="(crumb, i) in files.breadcrumbs" :key="i + crumb.path">
                 <button @click="files.navigate(crumb.path)"
+                    :disabled="!ws.canUseActions"
                     class="px-2 py-0.5 text-xs text-ink hover:bg-bg-hi rounded whitespace-nowrap transition-colors">
                     {{ crumb.label }}
                 </button>
@@ -174,6 +179,15 @@ function pickSort(by) {
     transition: border-color 0.12s ease, color 0.12s ease;
 }
 .tb-btn:hover { border-color: var(--color-accent); }
+.tb-btn:disabled,
+.tb-btn-sm:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+}
+.tb-btn:disabled:hover,
+.tb-btn-sm:disabled:hover {
+    border-color: var(--color-line);
+}
 .tb-btn.is-active {
     color: var(--color-accent);
     border-color: var(--color-accent);

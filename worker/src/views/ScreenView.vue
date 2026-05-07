@@ -21,10 +21,10 @@ function onImageLoad(e) {
 }
 
 onMounted(() => {
-    if (ws.showActions && !screen.imageUrl) screen.capture();
+    if (ws.canUseActions && !screen.imageUrl) screen.capture();
 });
 
-watch(() => ws.showActions, (ready) => {
+watch(() => ws.canUseActions, (ready) => {
     if (ready && !screen.imageUrl && !screen.loading) screen.capture();
 });
 
@@ -35,7 +35,7 @@ onUnmounted(() => {
 
 <template>
     <div class="flex min-h-0 flex-1 flex-col bg-zinc-950">
-        <div v-show="ws.showActions" class="shrink-0 border-b border-zinc-800 bg-zinc-900/70 px-3 py-2">
+        <div v-show="ws.canUseActions" class="shrink-0 border-b border-zinc-800 bg-zinc-900/70 px-3 py-2">
             <div class="flex min-w-0 items-center gap-2">
                 <button
                     @click="screen.capture"
@@ -59,7 +59,7 @@ onUnmounted(() => {
         </div>
 
         <main class="relative min-h-0 flex-1 overflow-auto bg-black">
-            <div v-if="!ws.showActions" class="flex h-full items-center justify-center px-4 text-center text-sm text-zinc-500">
+            <div v-if="!ws.showActions && !ws.isReconnecting" class="flex h-full items-center justify-center px-4 text-center text-sm text-zinc-500">
                 等待客户端连接和认证
             </div>
 

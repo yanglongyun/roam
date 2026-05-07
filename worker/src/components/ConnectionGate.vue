@@ -8,7 +8,9 @@ const route = useRoute();
 
 const show = computed(() => {
     if (route.name === 'guard') return false;  // guard 自己显示状态
-    return !ws.showActions || ws.invalid || ws.superseded;
+    if (ws.invalid || ws.superseded) return true;
+    if (ws.connectionLost) return true;
+    return !ws.showActions && !ws.isReconnecting;
 });
 
 const status = computed(() => {

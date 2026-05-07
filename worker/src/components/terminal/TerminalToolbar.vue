@@ -1,9 +1,11 @@
 <script setup>
 import { ref } from 'vue';
 import { useTerminalStore } from '@/stores/terminal';
+import { useWsStore } from '@/stores/ws';
 import NewTerminalModal from './NewTerminalModal.vue';
 
 const term = useTerminalStore();
+const ws = useWsStore();
 const showNewModal = ref(false);
 </script>
 
@@ -23,7 +25,8 @@ const showNewModal = ref(false);
                     <span class="truncate text-[10px] text-zinc-500">{{ tab.cwd }}</span>
                 </button>
                 <button
-                    class="ml-auto hidden h-5 w-5 shrink-0 items-center justify-center rounded text-zinc-500 hover:bg-zinc-800 hover:text-zinc-100 group-hover:flex"
+                    class="ml-auto hidden h-5 w-5 shrink-0 items-center justify-center rounded text-zinc-500 hover:bg-zinc-800 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-40 group-hover:flex"
+                    :disabled="!ws.canUseActions"
                     @click.stop="term.closeTerminal(tab.id)"
                 >
                     ✕
@@ -31,9 +34,10 @@ const showNewModal = ref(false);
             </div>
 
             <button
-                class="shrink-0 w-9 h-9 flex items-center justify-center rounded-lg border border-zinc-800 bg-zinc-950 text-zinc-400 hover:border-zinc-700 hover:text-zinc-100 transition-colors"
+                class="shrink-0 w-9 h-9 flex items-center justify-center rounded-lg border border-zinc-800 bg-zinc-950 text-zinc-400 hover:border-zinc-700 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-40 transition-colors"
                 title="新终端"
-                @click="showNewModal = true"
+                :disabled="!ws.canUseActions"
+                @click="ws.canUseActions && (showNewModal = true)"
             >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                     stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -43,6 +47,6 @@ const showNewModal = ref(false);
             </button>
         </div>
 
-        <NewTerminalModal :open="showNewModal" @close="showNewModal = false" />
+        <NewTerminalModal :open="showNewModal && ws.canUseActions" @close="showNewModal = false" />
     </div>
 </template>

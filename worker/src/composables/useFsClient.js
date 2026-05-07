@@ -48,6 +48,10 @@ export function useFsClient() {
 
     function call(type, data, timeoutMs = 30000) {
         return new Promise((resolve, reject) => {
+            if (!ws.canUseActions) {
+                reject(new Error('客户端未连接'));
+                return;
+            }
             const reqId = newReqId();
             const timer = setTimeout(() => {
                 pending.delete(reqId);
@@ -57,26 +61,41 @@ export function useFsClient() {
                 resolve: (v) => { clearTimeout(timer); pending.delete(reqId); resolve(v); },
                 reject: (e) => { clearTimeout(timer); pending.delete(reqId); reject(e); },
             });
-            ws.sendMsg({ type, to: 'desktop', data: { reqId, ...data } });
+            if (!ws.sendMsg({ type, to: 'desktop', data: { reqId, ...data } })) {
+                clearTimeout(timer);
+                pending.delete(reqId);
+                reject(new Error('客户端未连接'));
+            }
         });
     }
 
     function waitOnce(reqId, timeoutMs) {
-        return new Promise((resolve, reject) => {
+        let cancel;
+        const promise = new Promise((resolve, reject) => {
             const timer = setTimeout(() => {
                 pending.delete(reqId);
                 reject(new Error('上传超时'));
             }, timeoutMs);
+            cancel = (error) => {
+                clearTimeout(timer);
+                pending.delete(reqId);
+                reject(error);
+            };
             pending.set(reqId, {
                 onAck: (v) => { clearTimeout(timer); pending.delete(reqId); resolve(v); },
                 resolve: (v) => { clearTimeout(timer); pending.delete(reqId); resolve(v); },
                 reject: (e) => { clearTimeout(timer); pending.delete(reqId); reject(e); },
             });
         });
+        return { promise, cancel };
     }
 
     function fsRead(path, onProgress) {
         return new Promise((resolve, reject) => {
+            if (!ws.canUseActions) {
+                reject(new Error('客户端未连接'));
+                return;
+            }
             const reqId = newReqId();
             const chunks = [];
             let meta = null;
@@ -105,20 +124,31 @@ export function useFsClient() {
                 },
                 reject: (e) => { clearTimeout(timer); pending.delete(reqId); reject(e); },
             });
-            ws.sendMsg({ type: 'fs.read', to: 'desktop', data: { reqId, path } });
+            if (!ws.sendMsg({ type: 'fs.read', to: 'desktop', data: { reqId, path } })) {
+                clearTimeout(timer);
+                pending.delete(reqId);
+                reject(new Error('客户端未连接'));
+            }
         });
     }
 
     async function fsUpload(path, file, onProgress, overwrite = true) {
+        if (!ws.canUseActions) throw new Error('客户端未连接');
         const reqId = newReqId();
-        const startP = waitOnce(reqId, 15000);
-        ws.sendMsg({ type: 'fs.upload.start', to: 'desktop', data: { reqId, path, size: file.size, overwrite } });
-        await startP;
+        const start = waitOnce(reqId, 15000);
+        if (!ws.sendMsg({ type: 'fs.upload.start', to: 'desktop', data: { reqId, path, size: file.size, overwrite } })) {
+            start.cancel(new Error('客户端未连接'));
+            await start.promise;
+        }
+        await start.promise;
 
         if (file.size === 0) {
-            const eofP = waitOnce(reqId, 15000);
-            ws.sendMsg({ type: 'fs.upload.chunk', to: 'desktop', data: { reqId, seq: 0, data: '', eof: true } });
-            await eofP;
+            const eof = waitOnce(reqId, 15000);
+            if (!ws.sendMsg({ type: 'fs.upload.chunk', to: 'desktop', data: { reqId, seq: 0, data: '', eof: true } })) {
+                eof.cancel(new Error('客户端未连接'));
+                await eof.promise;
+            }
+            await eof.promise;
             onProgress?.(0, 0);
             return;
         }
@@ -129,9 +159,12 @@ export function useFsClient() {
             const end = Math.min(offset + UPLOAD_CHUNK, file.size);
             const b64 = await sliceToBase64(file.slice(offset, end));
             const eof = end >= file.size;
-            const ackP = waitOnce(reqId, 30000);
-            ws.sendMsg({ type: 'fs.upload.chunk', to: 'desktop', data: { reqId, seq, data: b64, eof } });
-            await ackP;
+            const ack = waitOnce(reqId, 30000);
+            if (!ws.sendMsg({ type: 'fs.upload.chunk', to: 'desktop', data: { reqId, seq, data: b64, eof } })) {
+                ack.cancel(new Error('客户端未连接'));
+                await ack.promise;
+            }
+            await ack.promise;
             offset = end;
             seq++;
             onProgress?.(offset, file.size);

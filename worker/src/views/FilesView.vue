@@ -1,6 +1,7 @@
 <script setup>
 import { onMounted } from 'vue';
 import { useFilesStore } from '@/stores/files';
+import { useWsStore } from '@/stores/ws';
 import FilesToolbar from '@/components/files/FilesToolbar.vue';
 import FileList from '@/components/files/FileList.vue';
 import UploadProgress from '@/components/files/UploadProgress.vue';
@@ -8,6 +9,7 @@ import PreviewModal from '@/components/files/PreviewModal.vue';
 import ActionSheet from '@/components/files/ActionSheet.vue';
 
 const files = useFilesStore();
+const ws = useWsStore();
 
 function onDragOver(e) {
     e.preventDefault();
@@ -17,6 +19,7 @@ function onDragLeave() { files.isDragOver = false; }
 function onDrop(e) {
     e.preventDefault();
     files.isDragOver = false;
+    if (!ws.canUseActions) return;
     const list = e.dataTransfer?.files;
     if (list?.length) files.uploadFiles(list);
 }

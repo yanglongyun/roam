@@ -17,12 +17,12 @@ onMounted(() => {
     ws.init();
 });
 
-// 未认证 + 需要密码 → 强制去 /login
+// 未认证 + 需要密码 → 强制去守卫页；短暂重连期间先保留当前页面。
 watch(
-    () => [ws.requiresPassword, ws.authenticated, ws.invalid],
-    ([req, authed, invalid]) => {
+    () => [ws.requiresPassword, ws.authenticated, ws.invalid, ws.isReconnecting],
+    ([req, authed, invalid, reconnecting]) => {
         if (invalid) return;
-        if (req && !authed && route.name !== 'guard') {
+        if (req && !authed && !reconnecting && route.name !== 'guard') {
             router.replace({ path: '/guard', query: route.query });
         }
     },

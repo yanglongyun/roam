@@ -1,5 +1,7 @@
 import { defineStore } from 'pinia';
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
+
+const DISCONNECT_GRACE_MS = 10000;
 
 export const useWsStore = defineStore('ws', () => {
     const sessionId = ref(null);
@@ -13,12 +15,19 @@ export const useWsStore = defineStore('ws', () => {
     const authError = ref('');
     const authClosed = ref(false);
     const superseded = ref(false);
+    const disconnectedSince = ref(0);
+    const disconnectGraceExpired = ref(false);
 
     const handlers = new Map();
     let ws = null;
     let reconnectTimer = null;
+    let disconnectGraceTimer = null;
     let challengeNonce = '';
     let lastChallengeReqAt = 0;
+
+    const connectionLost = computed(() => Boolean(disconnectedSince.value && disconnectGraceExpired.value));
+    const isReconnecting = computed(() => Boolean(disconnectedSince.value && !connectionLost.value));
+    const canUseActions = computed(() => state.value === 'connected' && showActions.value);
 
     function tokenKey() { return `meem_auth_${sessionId.value || ''}`; }
     function readToken() {
@@ -37,7 +46,9 @@ export const useWsStore = defineStore('ws', () => {
     }
 
     function sendMsg(msg) {
-        if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+        if (ws?.readyState !== WebSocket.OPEN) return false;
+        ws.send(JSON.stringify(msg));
+        return true;
     }
 
     function requestChallenge() {
@@ -128,14 +139,18 @@ export const useWsStore = defineStore('ws', () => {
         const url = `${protocol}//${location.host}/ws?${params.toString()}`;
 
         state.value = 'pending';
-        statusText.value = '连接中...';
+        statusText.value = connectionLost.value
+            ? '连接已断开，重连中...'
+            : (disconnectedSince.value ? '重连中...' : '连接中...');
         challengeNonce = '';
         lastChallengeReqAt = 0;
         ws = new WebSocket(url);
 
         ws.onopen = () => {
             state.value = 'pending';
-            statusText.value = '等待客户端...';
+            statusText.value = connectionLost.value
+                ? '连接已断开，重连中...'
+                : (disconnectedSince.value ? '重连中...' : '等待客户端...');
         };
 
         ws.onmessage = (event) => {
@@ -169,6 +184,9 @@ export const useWsStore = defineStore('ws', () => {
                     if (d.desktop === 'connected') {
                         state.value = 'connected';
                         statusText.value = '已连接到客户端';
+                        disconnectedSince.value = 0;
+                        disconnectGraceExpired.value = false;
+                        clearTimeout(disconnectGraceTimer);
                         showActions.value = authenticated.value || !requiresPassword.value;
                         if (!authenticated.value && requiresPassword.value && !challengeNonce) {
                             requestChallenge();
@@ -193,34 +211,62 @@ export const useWsStore = defineStore('ws', () => {
 
         ws.onclose = (event) => {
             state.value = 'offline';
-            authenticated.value = false;
-            showActions.value = false;
             challengeNonce = '';
             lastChallengeReqAt = 0;
             if (event?.code === 4003 || authClosed.value) {
+                authenticated.value = false;
+                showActions.value = false;
+                disconnectedSince.value = 0;
+                disconnectGraceExpired.value = false;
+                clearTimeout(disconnectGraceTimer);
                 statusText.value = '认证已锁定';
                 writeToken('');
                 return;
             }
             if (event?.code === 4001 || superseded.value) {
                 superseded.value = true;
+                authenticated.value = false;
+                showActions.value = false;
+                disconnectedSince.value = 0;
+                disconnectGraceExpired.value = false;
+                clearTimeout(disconnectGraceTimer);
                 statusText.value = '已在另一台设备登录';
                 return;
             }
-            statusText.value = '连接已断开，3 秒后重连...';
+            if (!disconnectedSince.value) {
+                disconnectedSince.value = Date.now();
+                disconnectGraceExpired.value = false;
+            }
+            statusText.value = '重连中...';
+            clearTimeout(disconnectGraceTimer);
+            const remainingGraceMs = DISCONNECT_GRACE_MS - (Date.now() - disconnectedSince.value);
+            if (remainingGraceMs <= 0) {
+                disconnectGraceExpired.value = true;
+                statusText.value = '连接已断开，重连中...';
+            } else {
+                disconnectGraceTimer = setTimeout(() => {
+                    if (state.value !== 'offline') return;
+                    disconnectGraceExpired.value = true;
+                    statusText.value = '连接已断开，重连中...';
+                }, remainingGraceMs);
+            }
             reconnectTimer = setTimeout(connect, 3000);
         };
 
         ws.onerror = () => {
             state.value = 'offline';
-            statusText.value = '连接错误';
-            showActions.value = false;
+            if (!disconnectedSince.value) {
+                disconnectedSince.value = Date.now();
+                disconnectGraceExpired.value = false;
+            }
+            statusText.value = '重连中...';
         };
     }
 
     return {
         sessionId, clientId, state, statusText, showActions, invalid,
         authenticated, requiresPassword, authError, authClosed, superseded,
+        disconnectedSince, isReconnecting, connectionLost, canUseActions,
         init, sendMsg, onMessage, submitPassword,
     };
 });

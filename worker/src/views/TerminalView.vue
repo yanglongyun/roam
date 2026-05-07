@@ -50,7 +50,7 @@ function setTerminalContainer(terminalId, el) {
     if (el) term.mountTerminal(terminalId, el);
 }
 
-watch([() => term.showPanel, () => term.activeTab, () => snippets.snippets.length, () => ws.showActions], () => {
+watch([() => term.showPanel, () => term.activeTab, () => snippets.snippets.length, () => ws.canUseActions], () => {
     setTimeout(term.fitActiveTerminal, 60);
 });
 
@@ -88,12 +88,12 @@ onUnmounted(() => {
             </div>
         </div>
 
-        <BottomPanel v-show="ws.showActions && term.showPanel"
+        <BottomPanel v-show="ws.canUseActions && term.showPanel"
             @openAddSnippet="openAdd"
             @editSnippet="openEdit"
             @runSnippet="runSnippet" />
 
-        <InputBar v-show="ws.showActions" ref="inputBarRef" />
+        <InputBar v-show="ws.canUseActions" ref="inputBarRef" />
 
         <SnippetModal
             :open="showModal"

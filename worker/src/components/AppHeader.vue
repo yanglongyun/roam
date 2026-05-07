@@ -31,8 +31,8 @@ const currentLabel = computed(() => {
                 class="w-2 h-2 rounded-full shrink-0"
                 :class="{
                     'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]': ws.state === 'connected',
-                    'bg-amber-400 pulse': ws.state === 'pending',
-                    'bg-red-500': ws.state === 'offline'
+                    'bg-amber-400 pulse': (ws.state === 'pending' || ws.isReconnecting) && !ws.connectionLost,
+                    'bg-red-500': ws.connectionLost || (ws.state === 'offline' && !ws.isReconnecting)
                 }"
             ></span>
             <span class="truncate text-xs text-zinc-400">{{ ws.statusText }}</span>

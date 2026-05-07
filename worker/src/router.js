@@ -47,7 +47,7 @@ router.beforeEach((to, from) => {
     if (to.meta?.public) return true;
 
     const ws = useWsStore();
-    if (ws.requiresPassword && !ws.authenticated) {
+    if (ws.requiresPassword && !ws.authenticated && !ws.isReconnecting) {
         return { path: '/guard', query: to.query };
     }
     return true;

@@ -57,11 +57,11 @@ function submit() {
 }
 
 const canSend = computed(
-    () => ws.showActions && agent.configured && !agent.running && agent.input.trim().length > 0
+    () => ws.canUseActions && agent.configured && !agent.running && agent.input.trim().length > 0
 );
 
 const composerPlaceholder = computed(() => {
-    if (!ws.showActions) return '等待客户端连接……';
+    if (!ws.canUseActions) return ws.isReconnecting ? '重连中……' : '等待客户端连接……';
     if (!agent.configured) return '先去右上角"设置"填 API URL / Key / Model';
     if (agent.running) return '思考中……';
     return '让 agent 做点事……';
@@ -222,7 +222,7 @@ watch(
                         rows="1"
                         :placeholder="composerPlaceholder"
                         class="flex-1 bg-transparent border-0 outline-none resize-none py-1.5 px-1.5 text-[13px] leading-[1.5] text-ink placeholder:text-faint composer-textarea"
-                        :disabled="!ws.showActions || !agent.configured || agent.running"
+                        :disabled="!ws.canUseActions || !agent.configured || agent.running"
                         @keydown="onComposerKey"></textarea>
 
                     <button v-if="agent.running" type="button"
