@@ -1,14 +1,40 @@
 import pty from 'node-pty';
+import fs from 'fs';
 import path from 'path';
+import { createRequire } from 'module';
 import ws from '../../../server/ws.js';
 import { generateTerminalId } from '../../../core/ids.js';
 import { getDefaultShell, ensureDirectory, getDefaultDirectory } from './shell.js';
 
 const DEFAULT_COLS = 80;
 const DEFAULT_ROWS = 30;
+const require = createRequire(import.meta.url);
 
 const terminals = new Map();
 let activeId = null;
+
+function ensureNodePtyHelperExecutable() {
+    if (process.platform !== 'darwin') return;
+
+    const nodePtyEntry = require.resolve('node-pty');
+    const nodePtyRoot = path.resolve(path.dirname(nodePtyEntry), '..');
+    const helperPath = path.join(
+        nodePtyRoot,
+        'prebuilds',
+        `${process.platform}-${process.arch}`,
+        'spawn-helper'
+    );
+
+    try {
+        if (!fs.existsSync(helperPath)) return;
+        const mode = fs.statSync(helperPath).mode;
+        if ((mode & 0o111) === 0) {
+            fs.chmodSync(helperPath, mode | 0o755);
+        }
+    } catch (error) {
+        console.warn(`node-pty spawn-helper 权限修复失败: ${error.message || String(error)}`);
+    }
+}
 
 function getMeta(terminal) {
     return {
@@ -99,6 +125,7 @@ async function create(options = {}) {
         ptyProcess: null,
     };
 
+    ensureNodePtyHelperExecutable();
     const ptyProcess = pty.spawn(shell, [], {
         name: 'xterm-color', cols, rows, cwd, env: process.env,
     });
@@ -176,6 +203,7 @@ async function restart(terminalId) {
     terminal.ptyProcess?.kill();
 
     const shell = getDefaultShell();
+    ensureNodePtyHelperExecutable();
     const ptyProcess = pty.spawn(shell, [], {
         name: 'xterm-color',
         cols: terminal.cols,
