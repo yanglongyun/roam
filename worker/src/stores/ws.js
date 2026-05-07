@@ -183,7 +183,7 @@ export const useWsStore = defineStore('ws', () => {
                     const d = msg.data.devices;
                     if (d.desktop === 'connected') {
                         state.value = 'connected';
-                        statusText.value = '已连接到客户端';
+                        statusText.value = '远程已连接';
                         disconnectedSince.value = 0;
                         disconnectGraceExpired.value = false;
                         clearTimeout(disconnectGraceTimer);
