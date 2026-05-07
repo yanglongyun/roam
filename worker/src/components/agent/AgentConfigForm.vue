@@ -20,6 +20,10 @@ function providersInGroup(groupId) {
     return providers.value.filter((item) => item.group === groupId);
 }
 
+function groupLabel(groupId) {
+    return groups.value.find((group) => group.id === groupId)?.name || groupId;
+}
+
 watch(() => form.provider, (id) => {
     const current = agent.getProvider(id);
     if (current && id !== 'custom') {
@@ -67,22 +71,24 @@ defineExpose({ save });
     <div class="flex flex-col gap-4">
         <div class="flex flex-col gap-2">
             <label class="text-[10px] font-mono font-bold uppercase tracking-[0.18em] text-muted">Provider</label>
-            <div v-for="group in groups" :key="group.id" class="mb-1">
-                <div class="text-[10px] text-faint mb-1 font-mono">{{ group.name }}</div>
-                <div class="flex flex-wrap gap-1.5">
-                    <button
+            <select
+                v-model="form.provider"
+                class="h-11 w-full rounded-[10px] border border-line bg-bg px-3 text-[13px] text-ink outline-none transition-colors focus:border-accent">
+                <optgroup
+                    v-for="group in groups"
+                    :key="group.id"
+                    :label="group.name">
+                    <option
                         v-for="item in providersInGroup(group.id)"
                         :key="item.id"
-                        type="button"
-                        class="px-2.5 py-1.5 rounded-lg text-[12px] border transition-colors"
-                        :class="form.provider === item.id
-                            ? 'border-accent bg-accent/10 text-accent font-semibold'
-                            : 'border-line bg-bg text-ink hover:border-accent/50'"
-                        @click="form.provider = item.id"
-                    >
+                        :value="item.id">
                         {{ item.name }}
-                    </button>
-                </div>
+                    </option>
+                </optgroup>
+            </select>
+            <div v-if="selectedProvider" class="flex min-w-0 items-center justify-between gap-3 text-[11px] text-faint">
+                <span class="truncate">{{ groupLabel(selectedProvider.group) }}</span>
+                <span v-if="selectedProvider.defaultModel" class="truncate font-mono">{{ selectedProvider.defaultModel }}</span>
             </div>
         </div>
 
