@@ -1,5 +1,5 @@
 import { chromium } from 'playwright';
-import { BROWSER_CHANNEL } from '../../../core/env.js';
+import { PLAYWRIGHT_BROWSER_CHANNEL } from '../../../core/env.js';
 
 const state = {
     browser: null,
@@ -28,7 +28,7 @@ function parseUserFunction(code) {
 
 async function ensurePage() {
     if (!state.browser || !state.browser.isConnected()) {
-        state.browser = await chromium.launch({ headless: false, channel: BROWSER_CHANNEL });
+        state.browser = await chromium.launch({ headless: false, channel: PLAYWRIGHT_BROWSER_CHANNEL });
     }
     if (!state.context) {
         state.context = await state.browser.newContext();
