@@ -60,11 +60,7 @@ function resolveValue(key, sources) {
 const configValues = await loadConfigFile();
 const dotEnvValues = loadDotEnvFile();
 
-const CLOUDFLARE_WORKER_URL = String(
-    resolveValue('CLOUDFLARE_WORKER_URL', [dotEnvValues, configValues]) ||
-    resolveValue('MEEM_URL', [dotEnvValues, configValues]) ||
-    ''
-).trim();
+const CLOUDFLARE_WORKER_URL = String(resolveValue('CLOUDFLARE_WORKER_URL', [dotEnvValues, configValues]) || '').trim();
 if (!CLOUDFLARE_WORKER_URL) {
     console.error('缺少 CLOUDFLARE_WORKER_URL 配置');
     console.error('请在以下任一位置设置:');
@@ -90,26 +86,10 @@ if (SESSION_ID === 'default') {
     process.exit(1);
 }
 const SESSION_PASSWORD = String(resolveValue('SESSION_PASSWORD', [dotEnvValues, configValues]) || '').trim();
-const PLAYWRIGHT_BROWSER_CHANNEL = String(
-    resolveValue('PLAYWRIGHT_BROWSER_CHANNEL', [dotEnvValues, configValues]) ||
-    resolveValue('BROWSER_CHANNEL', [dotEnvValues, configValues]) ||
-    'chrome'
-).trim() || 'chrome';
-const BROWSER_EXTENSION_HOST = String(
-    resolveValue('BROWSER_EXTENSION_HOST', [dotEnvValues, configValues]) ||
-    resolveValue('CHROME_EXTENSION_HOST', [dotEnvValues, configValues]) ||
-    '127.0.0.1'
-).trim() || '127.0.0.1';
-const BROWSER_EXTENSION_PORT = Number.parseInt(String(
-    resolveValue('BROWSER_EXTENSION_PORT', [dotEnvValues, configValues]) ||
-    resolveValue('CHROME_EXTENSION_PORT', [dotEnvValues, configValues]) ||
-    '17373'
-).trim(), 10) || 17373;
-const DEBUG = String(
-    resolveValue('DEBUG', [dotEnvValues, configValues]) ||
-    resolveValue('MEEM_DEBUG', [dotEnvValues, configValues]) ||
-    '0'
-).trim() === '1';
+const PLAYWRIGHT_BROWSER_CHANNEL = String(resolveValue('PLAYWRIGHT_BROWSER_CHANNEL', [dotEnvValues, configValues]) || 'chrome').trim() || 'chrome';
+const BROWSER_EXTENSION_HOST = String(resolveValue('BROWSER_EXTENSION_HOST', [dotEnvValues, configValues]) || '127.0.0.1').trim() || '127.0.0.1';
+const BROWSER_EXTENSION_PORT = Number.parseInt(String(resolveValue('BROWSER_EXTENSION_PORT', [dotEnvValues, configValues]) || '17373').trim(), 10) || 17373;
+const DEBUG = String(resolveValue('DEBUG', [dotEnvValues, configValues]) || '0').trim() === '1';
 
 export { CLOUDFLARE_WORKER_URL, SERVER_URL, WEB_URL, SESSION_ID, SESSION_PASSWORD, PLAYWRIGHT_BROWSER_CHANNEL, BROWSER_EXTENSION_HOST, BROWSER_EXTENSION_PORT, DEBUG };
 export default {
