@@ -1,11 +1,11 @@
 import WebSocket from 'ws';
-import { SERVER_URL, WEB_URL, SESSION_PASSWORD, DEBUG } from '../core/env.js';
+import { SERVER_URL, WEB_URL, SESSION_ID, SESSION_PASSWORD, DEBUG } from '../core/env.js';
 import { generateSessionId } from '../core/ids.js';
 import browser from './browser/index.js';
 
 const state = {
     ws: null,
-    sessionId: generateSessionId(),
+    sessionId: SESSION_ID || generateSessionId(),
     onMessage: null,
     onOpen: null,
     reconnectTimer: null,
@@ -27,7 +27,8 @@ function broadcast(type, data) {
 }
 
 function printAccessInfo() {
-    const webUrl = `${WEB_URL}/guard?session=${state.sessionId}`;
+    const params = new URLSearchParams({ session: state.sessionId });
+    const webUrl = `${WEB_URL}/guard?${params.toString()}`;
     console.log('');
     console.log('✅ Meem 已连接');
     console.log('🔗 远程访问入口');
@@ -53,7 +54,8 @@ function printAccessInfo() {
 }
 
 function connect() {
-    const url = `${SERVER_URL}/ws?session=${state.sessionId}&device=desktop`;
+    const params = new URLSearchParams({ session: state.sessionId, device: 'desktop' });
+    const url = `${SERVER_URL}/ws?${params.toString()}`;
     state.ws = new WebSocket(url);
 
     state.ws.on('open', () => {

@@ -208,6 +208,7 @@ cp config.example.js config.js
 ```js
 export default {
     MEEM_URL: 'https://meem.example.workers.dev',
+    SESSION_ID: '',
     SESSION_PASSWORD: '',
     BROWSER_CHANNEL: 'chrome',
     CHROME_EXTENSION_HOST: '127.0.0.1',
@@ -219,6 +220,7 @@ export default {
 说明：
 
 - `MEEM_URL`：你的 Worker 地址
+- `SESSION_ID`：固定连接会话 ID，可空；留空则每次启动随机生成
 - `SESSION_PASSWORD`：访问密码，可空
 - `BROWSER_CHANNEL`：Playwright 使用的浏览器通道
 - `CHROME_EXTENSION_HOST` / `CHROME_EXTENSION_PORT`：本地浏览器扩展 bridge 地址
