@@ -1,182 +1,110 @@
-<div align="center">
-
-```text
-      .                路               .
-                          _
-                        _/ \_
-              _       _/     \_
-            _/ \_    /         \_
-          _/     \__/             \___
-        _/                             \__
-        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-```
-
 # Meem
 
-把你的电脑能力，通过浏览器远程带出来。
+把本机能力通过浏览器带到任意设备上。
 
-</div>
+Meem 不是把你的机器暴露到公网，而是让本机 Client 主动连到 Cloudflare Worker。远程网页只连 Worker，Worker 负责中继；终端、文件、屏幕、浏览器和 Agent 执行都发生在你的本机。
 
----
-
-## 这是什么
-
-Meem 由两部分组成：
-
-- [`worker/`](/D:/Code/meem/worker)：Cloudflare Worker + Web 前端
-- [`client/`](/D:/Code/meem/client)：运行在你本机上的 Client
-
-`worker` 负责：
-
-- 远程访问入口
-- WebSocket 中继
-- 前端界面
-- 会话接入
-
-`client` 负责：
-
-- 终端
-- 文件
-- 屏幕截图
-- 浏览器能力
-- Agents
-
-目标很直接：不用暴露端口，不用 SSH，不用 VPN，在任意设备的浏览器里接回你自己的机器。
-
----
-
-## 当前架构
-
-`client` 已经按四层结构重组：
+## 项目组成
 
 ```text
-client/
-├─ agents/   # 多 agent 核心层，负责任务理解、委派、工具编排
-├─ llm/      # 大模型兼容抽象层，维护 provider catalog 与请求/解析流水线
-├─ server/   # 纯服务层，负责 ws、路由、本地浏览器扩展 bridge
-├─ apps/     # 具体能力层，如 terminal / files / screen / guard
-├─ core/     # 少量共享基础模块
-├─ db.js
-└─ index.js
+meem/
+├─ worker/               # Cloudflare Worker + Vue 前端 + WebSocket 中继
+├─ client/               # 本机 Client，提供终端、文件、屏幕、Agent、浏览器 bridge
+└─ browser/
+   ├─ extension/         # Chrome 扩展，连接本机浏览器 bridge
+   └─ skill/             # 给 Agent 使用浏览器插件的 SKILL.md
 ```
 
-职责边界：
+运行时链路：
 
-- `agents` 负责“决定做什么”
-- `apps` 负责“真正去做”
-- `server` 负责“把服务接起来”
-- `llm` 负责“把不同模型接成统一接口”
+```text
+远程浏览器
+  ↓ https / wss
+Cloudflare Worker
+  ↓ wss
+本机 Meem Client
+  ├─ terminal / files / screen
+  ├─ agents / llm
+  └─ browser bridge ← Chrome extension ← 当前浏览器标签页
+```
 
-这不是单 agent 结构，而是多 agent 结构。
-
-当前内置 3 个 agent：
-
-- `main`：主控 agent，负责理解用户任务和选择执行路径
-- `browser`：浏览器子 agent，负责当前浏览器、当前标签页、当前登录状态
-- `playwright`：Playwright 子 agent，负责独立受控浏览器自动化
-
----
-
-## 浏览器能力设计
-
-Meem 现在同时支持两条浏览器路径。
-
-### 1. 当前浏览器路径
-
-由根目录的 [`browser/extension/`](browser/extension) + 本地 bridge 提供。
-
-特点：
-
-- 复用用户当前浏览器
-- 复用当前标签页
-- 复用当前登录状态
-- 更适合已登录网站、运营后台、当前页面读取与控制
-
-主控 agent 会把这类任务委派给 `browser` 子 agent。
-
-### 2. 独立 Playwright 路径
-
-由 `client` 本机直接启动受控浏览器。
-
-特点：
-
-- 独立浏览器实例
-- 不依赖用户当前浏览器状态
-- 更适合稳定自动化流程
-- 更适合隔离执行
-
-主控 agent 会把这类任务委派给 `playwright` 子 agent。
-
----
-
-## LLM Provider Catalog
-
-`client/llm` 参考了 AIOS 的设计思路，前后端共享同一份 provider catalog。
-
-当前做法：
-
-- 后端在 [`client/llm/providers.js`](/D:/Code/meem/client/llm/providers.js) 维护 provider 列表
-- `worker` 前端不再写死 providers
-- 前端通过 `agent.providers` 动态接收 provider groups 和 provider 列表
-
-这意味着：
-
-- provider 配置入口只有一份
-- 前端设置页和后端运行时不再漂移
-- 新增 provider 时，不需要再手动同步一份前端常量
-
----
-
-## 功能
+## 能力
 
 - 远程终端
 - 文件浏览、读取、上传、重命名、删除
 - 屏幕截图查看
-- 多 session Agent
-- 当前浏览器控制
-- Playwright 自动化
-- SQLite 本地持久化
+- 多会话 Agent
+- 子 Agent 消息追踪
+- 当前浏览器控制，复用当前标签页和登录态
+- Playwright 独立浏览器自动化
+- 本地 SQLite 持久化
+- 固定远程连接 session id
 
 本地数据库默认位置：
 
+- macOS / Linux / WSL：`~/.meem/meem.db`
 - Windows：`C:\Users\<用户名>\.meem\meem.db`
-- Linux / WSL / macOS：`~/.meem/meem.db`
 
----
-
-## 目录结构
+## Client 架构
 
 ```text
-meem/
-├─ worker/               # Cloudflare Worker + Web 前端
-│  ├─ server/
-│  └─ src/
-├─ client/               # 本机 Client
-│  ├─ agents/            # 多 agent 运行时
-│  │  ├─ main/
-│  │  ├─ browser/
-│  │  └─ playwright/
-│  ├─ llm/               # provider + input/output/requester pipeline
-│  ├─ server/            # ws / router / browser bridge
-  │  ├─ apps/              # terminal / files / screen / guard
-│  └─ core/
-└─ browser/
-   ├─ extension/         # Chrome 扩展，连接本地浏览器 bridge
-   └─ skill/             # Agent 使用浏览器插件的说明文档
+client/
+├─ agents/   # 多 Agent 运行时、工具编排、浏览器/Playwright 子 Agent
+├─ apps/     # terminal / files / screen / guard 等具体能力
+├─ core/     # 配置、ID、MIME 等共享基础模块
+├─ llm/      # provider catalog、请求器、输入输出适配
+├─ server/   # WebSocket、消息路由、本地浏览器 bridge
+├─ db.js     # SQLite 初始化和持久化接口
+└─ index.js  # Client 启动入口
 ```
 
----
+内置 Agent：
 
-## 部署
+- `main`：主控 Agent，理解任务并选择终端、浏览器或子 Agent。
+- `browser`：控制用户当前浏览器，由 Chrome 扩展和本地 bridge 提供能力。
+- `playwright`：启动独立自动化浏览器，适合隔离、可重复的网页流程。
 
-前置要求：
+## 浏览器能力
 
-- Cloudflare 账号
+Meem 有两条浏览器路径。
+
+当前浏览器路径：
+
+- 源码在 `browser/extension/` 和 `client/server/browser/`
+- 复用用户当前浏览器、当前标签页、当前登录态
+- 适合已登录网站、运营后台、当前页面读取和轻量控制
+
+Playwright 路径：
+
+- 源码在 `client/agents/playwright/`
+- 由 Client 在本机启动独立受控浏览器
+- 适合隔离执行、稳定自动化、不会影响当前浏览器页面
+
+Agent 侧的使用说明在 `browser/skill/SKILL.md`。
+
+## LLM Provider
+
+Provider catalog 只维护在 `client/llm/providers.js`。
+
+前端 Agent 设置页会从 Client 动态接收：
+
+- provider groups
+- provider list
+- 默认 API URL
+- 默认 model
+- key 获取入口
+
+因此新增或修改 provider 时，不需要在 worker 前端再同步一份常量。
+
+## 前置要求
+
 - Node.js 20+
-- 一台常开的电脑
-- Windows 下如果要编译原生模块，需要 Visual Studio Build Tools 2022 + Desktop development with C++
+- Cloudflare 账号
+- 一台运行 Meem Client 的本机电脑
+- Chrome 或 Chromium 系浏览器
+- 如果在 Windows 上安装原生依赖，可能需要 Visual Studio Build Tools 2022 和 Desktop development with C++
 
-### 1. 部署 Worker
+## 部署 Worker
 
 ```bash
 git clone https://github.com/valueriver/meem
@@ -185,7 +113,10 @@ npm install
 cp wrangler.example.jsonc wrangler.jsonc
 ```
 
-然后编辑 [`worker/wrangler.jsonc`](/D:/Code/meem/worker/wrangler.jsonc)，填好 Cloudflare 配置。
+编辑 `worker/wrangler.jsonc`：
+
+- `account_id`：Cloudflare account id，可用 `npx wrangler whoami` 查看
+- `routes`：可选，自定义域名；不用自定义域名就删除整个 `routes` 段
 
 部署：
 
@@ -193,9 +124,12 @@ cp wrangler.example.jsonc wrangler.jsonc
 npm run deploy
 ```
 
-部署后你会拿到一个 `workers.dev` 地址，或者你自己的绑定域名。
+部署完成后得到 Worker 地址，例如：
 
-### 2. 配置并启动 Client
+- `https://meem.<your-subdomain>.workers.dev`
+- `https://i.example.com`
+
+## 配置 Client
 
 ```bash
 cd ../client
@@ -203,109 +137,124 @@ npm install
 cp config.example.js config.js
 ```
 
-编辑 [`client/config.js`](/D:/Code/meem/client/config.js)：
+编辑 `client/config.js`：
 
 ```js
 export default {
-    MEEM_URL: 'https://meem.example.workers.dev',
-    SESSION_ID: '',
-    SESSION_PASSWORD: '',
-    BROWSER_CHANNEL: 'chrome',
-    CHROME_EXTENSION_HOST: '127.0.0.1',
-    CHROME_EXTENSION_PORT: '17373',
-    MEEM_DEBUG: '0',
+    MEEM_URL: 'https://meem.example.workers.dev', // 已部署的 Worker 地址，可用 workers.dev 或自定义域名
+    SESSION_ID: '', // 固定连接会话 ID；留空则每次启动随机生成，不能写 default
+    SESSION_PASSWORD: '', // 远程网页访问密码；留空则不需要登录校验
+    BROWSER_CHANNEL: 'chrome', // Playwright 使用的浏览器通道，常用值 chrome / msedge / chromium
+    CHROME_EXTENSION_HOST: '127.0.0.1', // 本地浏览器扩展 bridge 监听地址，通常不用改
+    CHROME_EXTENSION_PORT: '17373', // 本地浏览器扩展 bridge 监听端口，需和扩展弹窗里的端口一致
+    MEEM_DEBUG: '0', // 调试日志开关；写 1 会打印 WebSocket 收包摘要
 };
 ```
 
-说明：
+配置来源优先级：
 
-- `MEEM_URL`：你的 Worker 地址
-- `SESSION_ID`：固定连接会话 ID，可空；留空则每次启动随机生成
-- `SESSION_PASSWORD`：访问密码，可空
-- `BROWSER_CHANNEL`：Playwright 使用的浏览器通道
-- `CHROME_EXTENSION_HOST` / `CHROME_EXTENSION_PORT`：本地浏览器扩展 bridge 地址
+1. 环境变量
+2. `client/.env`
+3. `client/config.js`
 
-启动：
+`SESSION_ID` 用于固定远程入口。留空时每次 Client 启动都会随机生成新 session；填固定值后，每次启动都使用同一个访问链接。`SESSION_ID` 不能写 `default`。
+
+## 启动 Client
 
 ```bash
+cd client
 npm start
 ```
 
 启动后控制台会输出：
 
 - 远程访问入口
-- 会话密码
-- 本地浏览器 bridge 地址
+- 访问密码，如果配置了 `SESSION_PASSWORD`
+- 本地浏览器扩展 bridge 地址
 
-### 3. 加载 Chrome 扩展
+如果你希望电脑休眠时也尽量保持运行，macOS 可以这样启动：
 
-打开 `chrome://extensions`：
+```bash
+caffeinate -dimsu node /path/to/meem/client/index.js
+```
 
-1. 开启开发者模式
-2. 选择 `Load unpacked`
-3. 选择 [`browser/extension/`](browser/extension)
+## 加载 Chrome 扩展
 
-扩展会连接本地 `client/server/browser` bridge。
+1. 打开 `chrome://extensions`
+2. 开启开发者模式
+3. 点击 `Load unpacked`
+4. 选择 `meem/browser/extension`
+5. 打开扩展弹窗，确认本地地址和端口与 `client/config.js` 一致
+6. 点击建立连接
 
-### 4. 配置模型
+扩展连接后，Agent 可以通过 `browser` 子 Agent 使用当前浏览器标签页。
 
-进入 Meem 的 Agent 页面后，直接在设置里配置：
+## 配置 Agent 模型
+
+打开远程访问入口，进入 Agent 页面，点击右上角设置。
+
+需要配置：
 
 - Provider
 - API URL
 - API Key
 - Model
 
-这些配置由后端动态下发 provider catalog，并持久化到本机数据库。
+配置会保存到本机 `~/.meem/meem.db`，不是保存在 Worker。
 
----
+## 常用命令
 
-## 开发
-
-### Worker / Web 前端
+Worker：
 
 ```bash
 cd worker
-npm install
-npm run dev:web
-```
-
-构建：
-
-```bash
 npm run build
+npm run deploy
 ```
 
-### Client
+Client：
 
 ```bash
 cd client
-npm install
 npm start
 ```
 
-### Chrome 扩展
+语法检查示例：
 
-修改 [`browser/extension/`](browser/extension) 后，去 `chrome://extensions` 点刷新。
+```bash
+node --check client/core/env.js
+node --check client/server/ws.js
+```
 
----
+## 排障
 
-## 当前状态
+访问页面显示未连接：
 
-当前代码库已经完成这些关键迁移：
+- 确认 `client` 正在运行
+- 确认 `MEEM_URL` 是当前部署的 Worker 地址
+- 确认远程 URL 里的 `session` 和 Client 控制台打印的一致
+- 如果使用固定 session，确认 `SESSION_ID` 没有写错
 
-- `client` 从旧的单体 `agent` 结构迁移到 `agents / llm / server / apps`
-- 主 agent 改成多 agent 委派模式
-- 浏览器能力拆成“当前浏览器”与“Playwright”双路径
-- provider 列表改成后端维护、前端动态读取
+扩展显示未连接：
 
-如果你继续往下开发，建议遵守两个原则：
+- 确认 Client 正在运行
+- 确认扩展里的 host / port 与 `CHROME_EXTENSION_HOST` / `CHROME_EXTENSION_PORT` 一致
+- 确认 Chrome 已加载 `browser/extension`
 
-1. 不要把业务能力直接塞进 `agents`
-2. 不要在前端重复维护后端已经拥有的配置源
+Agent 提示未配置：
 
----
+- 到 Agent 设置里填写 Provider、API URL、API Key、Model
+- 如果只改了 `client/llm/providers.js`，需要重启 Client 才会下发新的 provider catalog
 
-## License
+Client 启动失败：
 
-[MIT](https://opensource.org/licenses/MIT)
+- 先确认 `client/config.js` 是 ESM 格式：`export default { ... }`
+- 确认 `MEEM_URL` 是完整 URL，例如 `https://i.example.com`
+- Windows 原生依赖安装失败时，安装 Visual Studio Build Tools 2022
+
+## 安全边界
+
+- Worker 不保存终端输出、文件内容、模型 Key 或 Agent 历史
+- 真实数据保存在本机 Client 和本机 SQLite
+- `SESSION_PASSWORD` 用于远程网页访问校验
+- 不要把真实 `client/config.js` 和 `worker/wrangler.jsonc` 提交到仓库
