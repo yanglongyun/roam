@@ -60,21 +60,25 @@ function resolveValue(key, sources) {
 const configValues = await loadConfigFile();
 const dotEnvValues = loadDotEnvFile();
 
-const MEEM_URL = String(resolveValue('MEEM_URL', [dotEnvValues, configValues]) || '').trim();
-if (!MEEM_URL) {
-    console.error('缺少 MEEM_URL 配置');
+const CLOUDFLARE_WORKER_URL = String(
+    resolveValue('CLOUDFLARE_WORKER_URL', [dotEnvValues, configValues]) ||
+    resolveValue('MEEM_URL', [dotEnvValues, configValues]) ||
+    ''
+).trim();
+if (!CLOUDFLARE_WORKER_URL) {
+    console.error('缺少 CLOUDFLARE_WORKER_URL 配置');
     console.error('请在以下任一位置设置:');
     console.error(`  - ${configPath}`);
     console.error(`  - ${envPath}`);
-    console.error('  - 环境变量 MEEM_URL');
+    console.error('  - 环境变量 CLOUDFLARE_WORKER_URL');
     process.exit(1);
 }
 
 let parsed;
 try {
-    parsed = new URL(MEEM_URL);
+    parsed = new URL(CLOUDFLARE_WORKER_URL);
 } catch {
-    console.error(`MEEM_URL 无效: ${MEEM_URL}`);
+    console.error(`CLOUDFLARE_WORKER_URL 无效: ${CLOUDFLARE_WORKER_URL}`);
     process.exit(1);
 }
 
@@ -101,11 +105,15 @@ const BROWSER_EXTENSION_PORT = Number.parseInt(String(
     resolveValue('CHROME_EXTENSION_PORT', [dotEnvValues, configValues]) ||
     '17373'
 ).trim(), 10) || 17373;
-const DEBUG = String(resolveValue('MEEM_DEBUG', [dotEnvValues, configValues]) || '0').trim() === '1';
+const DEBUG = String(
+    resolveValue('DEBUG', [dotEnvValues, configValues]) ||
+    resolveValue('MEEM_DEBUG', [dotEnvValues, configValues]) ||
+    '0'
+).trim() === '1';
 
-export { MEEM_URL, SERVER_URL, WEB_URL, SESSION_ID, SESSION_PASSWORD, PLAYWRIGHT_BROWSER_CHANNEL, BROWSER_EXTENSION_HOST, BROWSER_EXTENSION_PORT, DEBUG };
+export { CLOUDFLARE_WORKER_URL, SERVER_URL, WEB_URL, SESSION_ID, SESSION_PASSWORD, PLAYWRIGHT_BROWSER_CHANNEL, BROWSER_EXTENSION_HOST, BROWSER_EXTENSION_PORT, DEBUG };
 export default {
-    MEEM_URL,
+    CLOUDFLARE_WORKER_URL,
     SERVER_URL,
     WEB_URL,
     SESSION_ID,
