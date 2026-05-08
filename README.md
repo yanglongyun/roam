@@ -1,10 +1,14 @@
 # Roam
 
-**纯远程访问场景** —— 把本机的终端 / 文件 / 屏幕带到任意设备的浏览器上。
+**在手机上继续使用电脑里的 Claude Code / Codex** —— 把本机的终端 / 文件 / 屏幕带到任意设备的浏览器上。
 
 机器不暴露公网。本机 Server 主动连 Cloudflare Worker,Worker 只做中继。远程网页只连 Worker,数据不落地。
 
-> 这个仓库的前身是 [valueriver/meem](https://github.com/valueriver/meem)。后来把 Agent / LLM / 浏览器扩展等本机能力整体拆掉,只保留"远程访问"内核,改名为 Roam。需要 Agent / 文档 / Todo 等本机能力,请用新的 [meem](https://github.com/valueriver/meem)(纯本机版,不用 Worker)。
+| 终端 | 文件管理 | 系统状态 |
+|---|---|---|
+| ![终端](https://pub-5cb9f2ea49ac433aba4c20d46cd886e7.r2.dev/posts/roam-v2/01-terminal.png) | ![文件管理](https://pub-5cb9f2ea49ac433aba4c20d46cd886e7.r2.dev/posts/roam-v2/02-files.png) | ![系统状态](https://pub-5cb9f2ea49ac433aba4c20d46cd886e7.r2.dev/posts/roam-v2/03-status.png) |
+
+> **顺便打个广告**:我目前主力在做的另一个项目是 [AIOS](https://github.com/valueriver/AIOS) —— 用 AI 直接构建一个操作系统,欢迎去看看、Star、提 issue。
 
 ## 项目组成
 
