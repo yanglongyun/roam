@@ -1,16 +1,17 @@
-import server from './server/index.js';
+import ws from './ws.js';
+import router from './router.js';
 
-import guard from './apps/guard/index.js';
-import terminal from './apps/terminal/index.js';
+import guard from './services/guard/index.js';
+import terminal from './services/terminal/index.js';
 
 async function boot() {
-    console.log('🚀 正在启动 Roam Client...');
+    console.log('🚀 正在启动 Roam Server...');
 
     guard.bindOnGrant((clientId) => {
         terminal.sendSnapshotTo(clientId);
     });
 
-    server.router.bindOnDevicesChanged((devices) => {
+    router.bindOnDevicesChanged((devices) => {
         if (devices?.web !== 'connected') return;
         console.log('🌐 网页端已接入当前会话');
         terminal.sendSnapshotAll();
@@ -19,23 +20,23 @@ async function boot() {
 
     await terminal.ensureDefault();
 
-    server.ws.init({
+    ws.init({
         onOpen: () => {
             guard.sendAuthMode();
             terminal.sendSnapshotAll();
         },
-        onMessage: (msg) => server.router.dispatch(msg),
+        onMessage: (msg) => router.dispatch(msg),
     });
 
     process.on('SIGINT', () => {
-        console.log('\n🛑 正在关闭 Roam Client...');
+        console.log('\n🛑 正在关闭 Roam Server...');
         terminal.shutdown();
-        server.ws.close();
+        ws.close();
         process.exit(0);
     });
 }
 
 boot().catch((err) => {
-    console.error('❌ Roam Client 启动失败:', err.message);
+    console.error('❌ Roam Server 启动失败:', err.message);
     process.exit(1);
 });

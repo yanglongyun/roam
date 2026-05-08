@@ -1,9 +1,9 @@
 import ws from './ws.js';
-import guard from '../apps/guard/index.js';
-import terminal from '../apps/terminal/index.js';
-import files from '../apps/files/index.js';
-import screen from '../apps/screen/index.js';
-import status from '../apps/status/index.js';
+import guard from './services/guard/index.js';
+import terminal from './services/terminal/index.js';
+import files from './services/files/index.js';
+import screen from './services/screen/index.js';
+import status from './services/status/index.js';
 
 let onDevicesChanged = () => {};
 

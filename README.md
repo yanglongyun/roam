@@ -2,7 +2,7 @@
 
 **纯远程访问场景** —— 把本机的终端 / 文件 / 屏幕带到任意设备的浏览器上。
 
-机器不暴露公网。本机 Client 主动连 Cloudflare Worker,Worker 只做中继。远程网页只连 Worker,数据不落地。
+机器不暴露公网。本机 Server 主动连 Cloudflare Worker,Worker 只做中继。远程网页只连 Worker,数据不落地。
 
 > 这个仓库的前身是 [valueriver/meem](https://github.com/valueriver/meem)。后来把 Agent / LLM / 浏览器扩展等本机能力整体拆掉,只保留"远程访问"内核,改名为 Roam。需要 Agent / 文档 / Todo 等本机能力,请用新的 [meem](https://github.com/valueriver/meem)(纯本机版,不用 Worker)。
 
@@ -11,7 +11,7 @@
 ```text
 roam/
 ├─ worker/               # Cloudflare Worker + Vue 前端 + WebSocket 中继
-└─ client/               # 本机 Client,提供终端 / 文件 / 屏幕
+└─ server/               # 本机 Server,提供终端 / 文件 / 屏幕
 ```
 
 运行时链路:
@@ -21,7 +21,7 @@ roam/
   ↓ https / wss
 Cloudflare Worker (中继,不存数据)
   ↓ wss
-本机 Roam Client (终端 / 文件 / 屏幕)
+本机 Roam Server (终端 / 文件 / 屏幕)
 ```
 
 ## 能力
@@ -35,7 +35,7 @@ Cloudflare Worker (中继,不存数据)
 
 - Node.js 20+
 - Cloudflare 账号
-- 一台运行 Roam Client 的本机电脑
+- 一台运行 Roam Server 的本机电脑
 
 ## 部署 Worker
 
@@ -62,15 +62,15 @@ npm run deploy
 - `https://roam.<your-subdomain>.workers.dev`
 - `https://i.example.com`
 
-## 配置 Client
+## 配置 Server
 
 ```bash
-cd ../client
+cd ../server
 npm install
 cp config.example.js config.js
 ```
 
-编辑 `client/config.js`:
+编辑 `server/config.js`:
 
 ```js
 export default {
@@ -81,10 +81,10 @@ export default {
 };
 ```
 
-## 启动 Client
+## 启动 Server
 
 ```bash
-cd client
+cd server
 npm start
 ```
 
@@ -93,26 +93,106 @@ npm start
 - 远程访问入口 URL
 - 访问密码(如果配置了)
 
-如果希望电脑休眠时也尽量保持运行,macOS 可以这样启动:
+## 保活运行
+
+希望关机/重启/网络抖动后 server 自动起来,各平台推荐做法:
+
+### macOS
+
+**临时(终端开着才活,关电脑前阻止休眠):**
 
 ```bash
-caffeinate -dimsu node /path/to/roam/client/index.js
+caffeinate -dimsu node /path/to/roam/server/index.js
 ```
+
+**长期(开机自启,崩了自动拉起):** 用 launchd。新建 `~/Library/LaunchAgents/me.meeem.roam.plist`:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key><string>me.meeem.roam</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/node</string>
+        <string>/Users/YOU/path/to/roam/server/index.js</string>
+    </array>
+    <key>WorkingDirectory</key><string>/Users/YOU/path/to/roam/server</string>
+    <key>RunAtLoad</key><true/>
+    <key>KeepAlive</key><true/>
+    <key>StandardOutPath</key><string>/tmp/roam.out.log</string>
+    <key>StandardErrorPath</key><string>/tmp/roam.err.log</string>
+</dict>
+</plist>
+```
+
+加载:
+
+```bash
+launchctl load ~/Library/LaunchAgents/me.meeem.roam.plist
+launchctl unload ~/Library/LaunchAgents/me.meeem.roam.plist  # 卸载
+```
+
+`which node` 看下你的 node 路径,nvm 装的话写 nvm 实际路径。
+
+### Linux
+
+用 systemd user service。新建 `~/.config/systemd/user/roam.service`:
+
+```ini
+[Unit]
+Description=Roam Server
+After=network-online.target
+
+[Service]
+ExecStart=/usr/bin/node /home/YOU/roam/server/index.js
+WorkingDirectory=/home/YOU/roam/server
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target
+```
+
+启用 + 启动:
+
+```bash
+systemctl --user daemon-reload
+systemctl --user enable --now roam
+systemctl --user status roam
+journalctl --user -u roam -f          # 看日志
+```
+
+如果希望未登录也跑(headless 服务器):`sudo loginctl enable-linger $USER`。
+
+### Windows
+
+最省事用 [nssm](https://nssm.cc/) 把 node 注册成 Windows 服务:
+
+```powershell
+nssm install Roam "C:\Program Files\nodejs\node.exe" "C:\path\to\roam\server\index.js"
+nssm set Roam AppDirectory "C:\path\to\roam\server"
+nssm start Roam
+nssm remove Roam confirm   # 卸载
+```
+
+或用任务计划程序触发器选"启动时",操作填 `node.exe` + 脚本路径。
 
 ## 排障
 
 页面显示未连接:
 
-- 确认 `client` 正在运行
+- 确认 `server` 正在运行
 - 确认 `CLOUDFLARE_WORKER_URL` 是当前部署的 Worker 地址
-- 确认远程 URL 里的 `session` 和 Client 控制台打印的一致
+- 确认远程 URL 里的 `session` 和 Server 控制台打印的一致
 
 ## 安全边界
 
 - Worker 不保存终端输出、文件内容或任何业务数据
-- 真实数据保留在本机 Client
+- 真实数据保留在本机 Server
 - `SESSION_PASSWORD` 用于远程网页访问校验
-- 不要把真实 `client/config.js` 和 `worker/wrangler.jsonc` 提交到仓库
+- 不要把真实 `server/config.js` 和 `worker/wrangler.jsonc` 提交到仓库
 
 ## License
 

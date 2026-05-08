@@ -7,14 +7,14 @@
  *        npx wrangler whoami
  *   2) (可选)绑自己的域名 — 先把域名托管进 Cloudflare,再填 routes;
  *        不绑就把整个 "routes" 段删掉,Worker 会自动给一个
- *        meem.<your-subdomain>.workers.dev 的测试地址。
+ *        roam.<your-subdomain>.workers.dev 的测试地址。
  *
  * Worker 自身是无状态中继 — 不需要 D1 / R2 / KV 任何存储。
- * 所有真实数据都在桌面端 ~/.meem/meem.db 的 SQLite 里。
+ * 所有真实数据都在桌面端 ~/.roam/roam.db 的 SQLite 里。
  */
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "meem",
+	"name": "roam",
 	"account_id": "<YOUR_CLOUDFLARE_ACCOUNT_ID>",
 	"main": "server/index.js",
 	"compatibility_date": "2025-09-12",
@@ -42,8 +42,8 @@
 	},
 
 	// 不绑自定义域名就把整个 "routes" 段删掉,Cloudflare 会自动给
-	// meem.<your-subdomain>.workers.dev 的测试地址。
-	// 要绑自己的域名(如 meem.example.com):
+	// roam.<your-subdomain>.workers.dev 的测试地址。
+	// 要绑自己的域名(如 roam.example.com):
 	//   1) 先在 Cloudflare 控制台 → Websites 把域名托管进来
 	//   2) 下面 pattern 换成要绑的域名
 	//   3) npm run deploy 之后 Cloudflare 会自动配 DNS + 证书

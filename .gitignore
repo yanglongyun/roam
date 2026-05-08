@@ -15,8 +15,5 @@ worker/wrangler.jsonc
 # 桌面端本地数据库(和 .roam/ 一起在用户 home 下)
 /database/
 
-# relay legacy
-server/relay/config.js
-
-# client local config
-client/config.js
+# 本机 server 配置 — 复制 server/config.example.js 到 server/config.js 后填值
+server/config.js

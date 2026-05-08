@@ -1,7 +1,7 @@
 {
-  "name": "roam-client",
+  "name": "roam-server",
   "version": "0.2.0",
-  "description": "Roam client — 远程访问本机能力(终端 / 文件 / 屏幕)",
+  "description": "Roam server — 远程访问本机能力(终端 / 文件 / 屏幕)",
   "type": "module",
   "main": "index.js",
   "scripts": {

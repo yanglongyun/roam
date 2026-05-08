@@ -1,6 +1,6 @@
 import WebSocket from 'ws';
-import { SERVER_URL, WEB_URL, SESSION_ID, SESSION_PASSWORD, DEBUG } from '../core/env.js';
-import { generateSessionId } from '../core/ids.js';
+import { SERVER_URL, WEB_URL, SESSION_ID, SESSION_PASSWORD, DEBUG } from './core/env.js';
+import { generateSessionId } from './core/ids.js';
 
 const state = {
     ws: null,

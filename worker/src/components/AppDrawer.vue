@@ -20,7 +20,7 @@ function navigateTo(path) {
         <aside class="drawer-enter absolute left-0 top-0 bottom-0 w-64 max-w-[80vw] bg-zinc-900 border-r border-zinc-800 flex flex-col safe-top safe-bottom">
             <div class="shrink-0 flex items-center justify-between px-4 py-3 border-b border-zinc-800">
                 <div class="flex items-baseline gap-2 min-w-0">
-                    <div class="font-serif font-bold text-[16px] tracking-tight text-zinc-100">Meem</div>
+                    <div class="font-serif font-bold text-[16px] tracking-tight text-zinc-100">Roam</div>
                     <div class="text-[11px] text-zinc-500">漫游</div>
                 </div>
                 <button @click="view.closeDrawer"

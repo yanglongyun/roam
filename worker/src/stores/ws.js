@@ -29,7 +29,7 @@ export const useWsStore = defineStore('ws', () => {
     const isReconnecting = computed(() => Boolean(disconnectedSince.value && !connectionLost.value));
     const canUseActions = computed(() => state.value === 'connected' && showActions.value);
 
-    function tokenKey() { return `meem_auth_${sessionId.value || ''}`; }
+    function tokenKey() { return `roam_auth_${sessionId.value || ''}`; }
     function readToken() {
         try { return localStorage.getItem(tokenKey()) || ''; } catch { return ''; }
     }

@@ -2,7 +2,7 @@ import { execFile } from 'child_process';
 import { promises as fsp } from 'fs';
 import os from 'os';
 import path from 'path';
-import ws from '../../server/ws.js';
+import ws from '../../ws.js';
 
 function runFile(command, args, options = {}) {
     return new Promise((resolve, reject) => {
@@ -18,7 +18,7 @@ function runFile(command, args, options = {}) {
 }
 
 async function captureToTemp(command, args) {
-    const file = path.join(os.tmpdir(), `meem-screen-${Date.now()}-${Math.random().toString(36).slice(2)}.png`);
+    const file = path.join(os.tmpdir(), `roam-screen-${Date.now()}-${Math.random().toString(36).slice(2)}.png`);
     try {
         await runFile(command, args(file), { timeout: 15000 });
         return await fsp.readFile(file);
