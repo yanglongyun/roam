@@ -68,7 +68,7 @@ function onSnippetClick(s) {
                     + 新增
                 </button>
             </div>
-            <div v-else class="flex flex-wrap gap-1">
+            <div v-else class="flex flex-col gap-1">
                 <button v-for="s in snippets.snippets" :key="s.id"
                     @click="onSnippetClick(s)"
                     @pointerdown="onPressStart(s)"
@@ -76,11 +76,11 @@ function onSnippetClick(s) {
                     @pointerleave="onPressEnd"
                     @pointercancel="onPressEnd"
                     @contextmenu.prevent="emit('editSnippet', s)"
-                    class="shrink-0 max-w-[12rem] truncate px-3 py-1.5 bg-emerald-900/30 hover:bg-emerald-900/50 active:bg-emerald-900/70 text-emerald-200 text-xs rounded border border-emerald-800/50 transition-colors">
+                    class="w-full truncate text-left px-3 py-1.5 bg-emerald-900/30 hover:bg-emerald-900/50 active:bg-emerald-900/70 text-emerald-200 text-xs rounded border border-emerald-800/50 transition-colors">
                     {{ s.name }}
                 </button>
                 <button @click="emit('openAddSnippet')"
-                    class="shrink-0 w-9 px-2 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-100 text-xs rounded border border-dashed border-zinc-600 transition-colors"
+                    class="w-full px-2 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-100 text-xs rounded border border-dashed border-zinc-600 transition-colors"
                     title="新增常用命令">
                     +
                 </button>

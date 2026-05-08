@@ -1,4 +1,5 @@
 <script setup>
+import { ref } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { useViewStore } from '@/stores/view';
 
@@ -6,9 +7,15 @@ const router = useRouter();
 const route = useRoute();
 const view = useViewStore();
 
+const showAbout = ref(false);
+
 function navigateTo(path) {
     view.closeDrawer();
     if (route.path !== path) router.push(path);
+}
+
+async function copy(text) {
+    try { await navigator.clipboard.writeText(text); } catch {}
 }
 </script>
 
@@ -45,6 +52,28 @@ function navigateTo(path) {
                     <span>{{ item.label }}</span>
                 </button>
             </nav>
+
+            <div class="shrink-0 border-t border-zinc-800">
+                <button @click="showAbout = !showAbout"
+                    class="w-full flex items-center justify-between px-4 py-3 text-sm text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors">
+                    <span>关于</span>
+                    <span class="text-xs text-zinc-600">{{ showAbout ? '▾' : '▸' }}</span>
+                </button>
+                <div v-if="showAbout" class="px-4 pb-3 space-y-2 text-xs">
+                    <div class="text-zinc-500">本项目把本机终端 / 文件 / 屏幕带到任意浏览器,Worker 只做中继,数据不落地。</div>
+                    <div class="flex items-center justify-between gap-2">
+                        <span class="text-zinc-500 shrink-0">项目</span>
+                        <a href="https://github.com/valueriver/roam" target="_blank" rel="noopener"
+                            class="text-emerald-400 hover:text-emerald-300 truncate">github.com/valueriver/roam</a>
+                    </div>
+                    <div class="flex items-center justify-between gap-2">
+                        <span class="text-zinc-500 shrink-0">微信</span>
+                        <button @click="copy('agentready')"
+                            class="font-mono text-zinc-200 hover:text-emerald-300 transition-colors"
+                            title="点击复制">agentready</button>
+                    </div>
+                </div>
+            </div>
 
         </aside>
     </div>
