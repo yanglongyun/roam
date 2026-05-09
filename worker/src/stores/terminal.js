@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { ref, watch } from 'vue';
+import { nextTick, ref, watch } from 'vue';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
@@ -25,6 +25,11 @@ const PANEL_TAB_KEY = 'terminal_panel_tab';
 const RECENT_DIRS_KEY = 'terminal_recent_dirs';
 const HISTORY_MAX = 50;
 const RECENT_DIRS_MAX = 8;
+const MIN_FIT_WIDTH = 160;
+const MIN_FIT_HEIGHT = 80;
+const MIN_RESIZE_COLS = 20;
+const MIN_RESIZE_ROWS = 4;
+const FIT_RETRY_DELAYS = [0, 40, 120];
 
 export const NAV_KEYS = [
     { label: 'Tab', code: '\t' },
@@ -58,6 +63,7 @@ const terminalInstances = new Map();
 const fitAddons = new Map();
 const terminalContainers = new Map();
 const pendingOutput = new Map();
+const pendingFits = new Map();
 
 function queueOutput(terminalId, output) {
     if (!output) return;
@@ -71,6 +77,12 @@ function flushOutput(terminalId) {
     if (!term || !output) return;
     pendingOutput.delete(terminalId);
     term.write(output);
+}
+
+function isContainerReady(container) {
+    if (!container || !container.isConnected) return false;
+    const rect = container.getBoundingClientRect();
+    return rect.width >= MIN_FIT_WIDTH && rect.height >= MIN_FIT_HEIGHT;
 }
 
 export const useTerminalStore = defineStore('terminal', () => {
@@ -151,7 +163,7 @@ export const useTerminalStore = defineStore('terminal', () => {
         const container = terminalContainers.get(terminalId);
         if (container && !terminal.element) {
             terminal.open(container);
-            fitAddon.fit();
+            if (terminalId === activeTerminalId.value) fitTerminal(terminalId);
         }
         flushOutput(terminalId);
         return terminal;
@@ -167,6 +179,7 @@ export const useTerminalStore = defineStore('terminal', () => {
         if (!terminalId) return;
         const terminal = ensureTerminalInstance(terminalId);
         if (!terminal) return;
+        if (terminal.cols < MIN_RESIZE_COLS || terminal.rows < MIN_RESIZE_ROWS) return;
         ws.sendMsg({
             type: 'system.resize',
             to: 'desktop',
@@ -181,15 +194,36 @@ export const useTerminalStore = defineStore('terminal', () => {
         if (!terminal?.element) {
             terminal.open(container);
         }
-        fitAddons.get(terminalId)?.fit();
         flushOutput(terminalId);
-        if (terminalId === activeTerminalId.value) sendResize(terminalId);
+        if (terminalId === activeTerminalId.value) fitTerminal(terminalId);
+    }
+
+    async function fitTerminalNow(terminalId = activeTerminalId.value) {
+        if (!terminalId) return;
+        if (terminalId !== activeTerminalId.value) return;
+        await nextTick();
+        const container = terminalContainers.get(terminalId);
+        if (!isContainerReady(container)) return;
+        try {
+            fitAddons.get(terminalId)?.fit();
+        } catch {
+            return;
+        }
+        sendResize(terminalId);
     }
 
     function fitTerminal(terminalId = activeTerminalId.value) {
         if (!terminalId) return;
-        fitAddons.get(terminalId)?.fit();
-        sendResize(terminalId);
+        const previous = pendingFits.get(terminalId);
+        if (previous) previous.forEach(clearTimeout);
+
+        const timers = FIT_RETRY_DELAYS.map((delay) => setTimeout(() => {
+            fitTerminalNow(terminalId);
+            if (delay === FIT_RETRY_DELAYS[FIT_RETRY_DELAYS.length - 1]) {
+                pendingFits.delete(terminalId);
+            }
+        }, delay));
+        pendingFits.set(terminalId, timers);
     }
 
     function fitActiveTerminal() {
@@ -249,7 +283,7 @@ export const useTerminalStore = defineStore('terminal', () => {
             if (!terminal) return;
             if (msg.data?.cols && msg.data?.rows) {
                 terminal.resize(msg.data.cols, msg.data.rows);
-                if (terminalId === activeTerminalId.value) fitAddons.get(terminalId)?.fit();
+                if (terminalId === activeTerminalId.value) fitTerminal(terminalId);
             }
         });
 
