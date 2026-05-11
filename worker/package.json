@@ -4,12 +4,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
+    "dev": "wrangler dev --port 9506",
     "dev:web": "vite",
     "build": "vite build",
     "predeploy": "npm run build",
     "deploy": "wrangler deploy",
-    "start": "wrangler dev",
+    "start": "wrangler dev --port 9506",
     "preview": "vite preview"
   },
   "dependencies": {
