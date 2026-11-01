@@ -1,0 +1,77 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+  * { box-sizing: border-box; }
+  :root {
+    --bg: #0e0f15; --panel: #171a24; --field: #0b0c11;
+    --line: #ffffff16; --ink: #eceefa; --muted: #868ea0;
+    --accent: #5b8cff; --accent2: #7c5bff; --good: #34d39e;
+  }
+  body {
+    width: 320px; margin: 0; color: var(--ink);
+    font: 13px -apple-system, "PingFang SC", system-ui, sans-serif;
+    background: radial-gradient(130% 110% at 0% 0%, #1b1f30 0%, var(--bg) 58%);
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { padding: 16px; }
+  .head { display: flex; align-items: center; gap: 10px; margin-bottom: 15px; }
+  .logo {
+    width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; flex-shrink: 0;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    box-shadow: 0 6px 18px #5b8cff44, inset 0 1px 0 #ffffff66;
+  }
+  .logo svg { width: 17px; height: 17px; display: block; }
+  .brand { flex: 1; min-width: 0; }
+  .brand b { font-size: 15px; font-weight: 800; letter-spacing: .2px; }
+  .ver {
+    font-family: ui-monospace, "SF Mono", monospace; font-size: 10.5px; color: var(--muted);
+    background: #ffffff0f; border: 1px solid var(--line); border-radius: 999px; padding: 3px 8px;
+  }
+  .status {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 12px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 9px 12px;
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #5a6072; flex-shrink: 0; transition: .2s; }
+  #status { color: var(--muted); font-size: 12px; }
+  .connected .dot { background: var(--good); box-shadow: 0 0 0 3px #34d39e30, 0 0 10px #34d39eaa; animation: pulse 2.2s infinite; }
+  .connected #status { color: var(--ink); }
+  @keyframes pulse { 50% { box-shadow: 0 0 0 4px #34d39e1f, 0 0 15px #34d39e88; } }
+  input {
+    width: 100%; background: var(--field); border: 1px solid var(--line); border-radius: 12px;
+    padding: 11px 12px; color: var(--ink); font-size: 12.5px; outline: none; transition: .15s;
+    font-family: ui-monospace, "SF Mono", monospace;
+  }
+  input::placeholder { color: #5a6072; font-family: -apple-system, system-ui, sans-serif; }
+  input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px #5b8cff2b; }
+  #toggle {
+    width: 100%; margin-top: 12px; border: 0; border-radius: 12px; padding: 11px;
+    font-weight: 700; font-size: 13px; letter-spacing: .3px; color: #fff; cursor: pointer;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    box-shadow: 0 6px 16px #5b8cff44; transition: transform .12s, box-shadow .15s, background .15s, color .15s;
+  }
+  #toggle:hover { transform: translateY(-1px); box-shadow: 0 10px 24px #5b8cff55; }
+  #toggle:active { transform: translateY(0) scale(.99); }
+  #toggle.on {
+    background: #ffffff0d; color: var(--muted); box-shadow: none; border: 1px solid var(--line);
+  }
+  #toggle.on:hover { background: #ffffff15; color: var(--ink); transform: none; box-shadow: none; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="head">
+      <div class="logo">
+        <svg viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M13 2 3 14h7l-1 8 10-12h-7z"/></svg>
+      </div>
+      <div class="brand"><b>browser-use</b></div>
+      <span id="ver" class="ver">v0.1.0</span>
+    </div>
+    <div class="status"><span id="dot" class="dot"></span><span id="status">…</span></div>
+    <input id="url" placeholder="连接地址" spellcheck="false" autocapitalize="off" />
+    <button id="toggle">连接</button>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

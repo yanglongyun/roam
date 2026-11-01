@@ -15,6 +15,11 @@ const routes = [
         component: () => import('./views/TerminalView.vue'),
     },
     {
+        path: '/chat',
+        name: 'chat',
+        component: () => import('./views/ChatView.vue'),
+    },
+    {
         path: '/files',
         name: 'files',
         component: () => import('./views/FilesView.vue'),
@@ -28,6 +33,11 @@ const routes = [
         path: '/screen',
         name: 'screen',
         component: () => import('./views/ScreenView.vue'),
+    },
+    {
+        path: '/settings',
+        name: 'settings',
+        component: () => import('./views/SettingsView.vue'),
     },
     { path: '/:pathMatch(.*)*', redirect: (to) => ({ path: '/guard', query: to.query }) },
 ];

@@ -4,6 +4,7 @@ import terminal from './services/terminal/index.js';
 import files from './services/files/index.js';
 import screen from './services/screen/index.js';
 import status from './services/status/index.js';
+import chat from './services/chat/index.js';
 
 let onDevicesChanged = () => {};
 
@@ -38,6 +39,9 @@ async function dispatch(message) {
     }
     if (t.startsWith('status.')) {
         if (await status.handle(message)) return;
+    }
+    if (t.startsWith('ai.') || t.startsWith('model.')) {
+        if (await chat.handle(message)) return;
     }
 
     console.log('未识别的消息类型:', t);

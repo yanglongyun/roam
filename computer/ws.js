@@ -44,7 +44,7 @@ function printAccessInfo() {
     console.log('📘 使用说明');
     console.log('   1. 在任意设备浏览器中打开上面的访问入口');
     console.log('   2. 如已设置访问密码，先输入密码再进入');
-    console.log('   3. 首次进入后即可使用终端、文件、屏幕能力');
+    console.log('   3. 首次进入后即可使用对话、终端、文件、屏幕能力');
     console.log('');
 }
 

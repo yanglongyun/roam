@@ -60,7 +60,7 @@ async function copy(text) {
                     <span class="text-xs text-zinc-600">{{ showAbout ? '▾' : '▸' }}</span>
                 </button>
                 <div v-if="showAbout" class="px-4 pb-3 space-y-2 text-xs">
-                    <div class="text-zinc-500">本项目把本机终端 / 文件 / 屏幕带到任意浏览器,Worker 只做中继,数据不落地。</div>
+                    <div class="text-zinc-500">本项目把本机终端 / 文件 / 屏幕 / AI 对话带到任意浏览器,Worker 只做中继,数据不落地。</div>
                     <div class="flex items-center justify-between gap-2">
                         <span class="text-zinc-500 shrink-0">项目</span>
                         <a href="https://github.com/valueriver/roam" target="_blank" rel="noopener"

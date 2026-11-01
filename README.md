@@ -17,7 +17,8 @@
 ```text
 roam/
 ├─ worker/               # Cloudflare Worker + Vue 前端 + WebSocket 中继
-└─ computer/             # 电脑端,提供终端 / 文件 / 屏幕
+├─ computer/             # 电脑端,提供终端 / 文件 / 屏幕 / AI 对话
+└─ extension/            # browser-use Chrome 扩展,让 AI 经 CDP 驱动本机 Chrome
 ```
 
 运行时链路:
@@ -33,13 +34,14 @@ Roam Computer (终端 / 文件 / 屏幕)
 ## 能力
 
 - 远程终端
+- AI 对话(agent):跑在电脑端,可执行命令、控制键鼠/截图、驱动 Chrome
 - 文件浏览、读取、上传、重命名、删除
 - 屏幕截图查看
 - 固定远程连接 session id
 
 ## 前置要求
 
-- Node.js 20+
+- Node.js 22.13+(电脑端用内置的 `node:sqlite` 存对话)
 - Cloudflare 账号
 - 一台运行 Roam Computer 的电脑
 
@@ -84,6 +86,7 @@ export default {
     SESSION_ID: '',          // 留空则每次启动随机生成
     SESSION_PASSWORD: '',    // 留空则不要密码
     DEBUG: '0',
+    BROWSER_BRIDGE_PORT: '9510', // 可选,本地浏览器 CDP 桥端口
 };
 ```
 
@@ -98,6 +101,35 @@ npm start
 
 - 远程访问入口 URL
 - 访问密码(如果配置了)
+
+## AI 对话
+
+侧边栏「对话」是内置的 agent。它跑在电脑端,模型请求从电脑直接发出,不经过 Worker。
+
+1. 打开「设置」,填 OpenAI 兼容接口的 API 地址、API Key、模型名并保存
+2. 回到「对话」直接说要做什么
+
+配置、对话记录都存在电脑端 `~/.roam/roam.db`,网页端只能看到 Key 的掩码。
+
+agent 可用的工具:
+
+| 工具 | 说明 |
+|---|---|
+| `shell` | 以登录 shell 执行命令,和远程终端拿到的 PATH 一致 |
+| `computer_*` / `open_app` | 截图、鼠标、键盘、打开应用(仅 macOS;鼠标和滚动需要 `brew install cliclick`) |
+| `browser_cdp` | 经 Chrome DevTools Protocol 驱动本机 Chrome,需要装 `extension/` 扩展 |
+
+上下文超过「压缩阈值」时,会自动把较早的消息总结成摘要,阈值和压缩提示词都能在设置里改。
+
+截图需要在「系统设置 → 隐私与安全性 → 屏幕录制」里授权启动 Roam 的应用;键盘输入需要「辅助功能」授权。
+
+### 浏览器控制
+
+1. `chrome://extensions` → 打开「开发者模式」→「加载已解压的扩展程序」→ 选 `extension/`
+2. 点扩展图标,填入 computer 启动日志里打印的地址:`ws://127.0.0.1:9510/cdp?token=<session id>`
+3. 显示「已连接」后,agent 就能用 `browser_cdp` 操作你已登录的 Chrome
+
+CDP 桥只监听 `127.0.0.1`,并校验 token 是否等于当前 session id。
 
 ## 保活运行
 
@@ -197,8 +229,9 @@ nssm remove Roam confirm   # 卸载
 
 ## 安全边界
 
-- Worker 不保存终端输出、文件内容或任何业务数据
-- 真实数据保留在电脑端
+- Worker 不保存终端输出、文件内容、对话或任何业务数据
+- 真实数据保留在电脑端,对话和模型配置(含 API Key)在 `~/.roam/roam.db`
+- AI 对话能执行任意命令、操作键鼠和浏览器,权限等同于远程终端;务必设置 `SESSION_PASSWORD`
 - `SESSION_PASSWORD` 用于远程网页访问校验
 - 不要把真实 `computer/config.js` 和 `worker/wrangler.jsonc` 提交到仓库
 
