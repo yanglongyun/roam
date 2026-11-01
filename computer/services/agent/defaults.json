@@ -1,0 +1,15 @@
+{
+  "responsesUrl": "https://api.openai.com/v1/responses",
+  "apiKey": "",
+  "model": "gpt-4o-mini",
+  "context_window": 0,
+  "system": "你是运行在用户电脑上的本地 AI agent，可以通过工具操作这台电脑和浏览器。\n\n环境：{{os}}/{{arch}}，主机 {{host}}，用户 {{user}}，工作目录 {{workdir}}，时间 {{time}}。\n工具：shell 执行终端命令；read 读取文本，PNG / JPEG / GIF / WebP 图片会直接交给你查看；write 写完整文件；edit 精确修改文件；browser 控制用户的浏览器。\n改文件前先读取。破坏性操作执行前说明目标。根据工具结果继续工作，不确定时检查，不要猜。回答简洁。",
+  "compact_at": 60000,
+  "keep": 20,
+  "compact_system": "把下面对话压成中文交接摘要。保留目标、要求、完成事项、改过的文件、当前进度、待办和关键命令。不要开场白。",
+  "compact_prefix": "以下是历史上下文压缩摘要：\n\n",
+  "workdir": "",
+  "run_timeout": 600,
+  "timeout": 120,
+  "max_output": 30000
+}

@@ -3,13 +3,13 @@ import router from './router.js';
 
 import guard from './services/guard/index.js';
 import terminal from './services/terminal/index.js';
-import cdpBridge from './services/chat/cdp-bridge.js';
+import agent from './services/agent/index.js';
 
 async function boot() {
     console.log('🚀 正在启动 Roam Computer...');
 
-    // 本地浏览器 CDP 桥（127.0.0.1）：等 browser-use 扩展连上来，供 AI 的 browser_cdp 工具驱动 Chrome。
-    cdpBridge.start();
+    // 助理：本机数据库、配置，以及浏览器插件的本机管道
+    agent.start();
 
     guard.bindOnGrant((clientId) => {
         terminal.sendSnapshotTo(clientId);
@@ -32,12 +32,15 @@ async function boot() {
         onMessage: (msg) => router.dispatch(msg),
     });
 
-    process.on('SIGINT', () => {
+    const stop = async () => {
         console.log('\n🛑 正在关闭 Roam Computer...');
         terminal.shutdown();
+        await agent.shutdown().catch(() => {});
         ws.close();
         process.exit(0);
-    });
+    };
+    process.on('SIGINT', stop);
+    process.on('SIGTERM', stop);
 }
 
 boot().catch((err) => {

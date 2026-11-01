@@ -3,5 +3,4 @@ export default {
     SESSION_ID: '',         // 固定连接会话 ID；留空则每次启动随机生成，不能写 default
     SESSION_PASSWORD: '',   // 远程网页访问密码；留空则不需要登录校验
     DEBUG: '0',             // 调试日志开关；写 1 会打印 WebSocket 收包摘要
-    BROWSER_BRIDGE_PORT: '9510', // 本地浏览器 CDP 桥端口（仅 127.0.0.1），供 browser-use 扩展连接
 };

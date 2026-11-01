@@ -17,8 +17,8 @@
 ```text
 roam/
 ├─ worker/               # Cloudflare Worker + Vue 前端 + WebSocket 中继
-├─ computer/             # 电脑端,提供终端 / 文件 / 屏幕 / AI 对话
-└─ extension/            # browser-use Chrome 扩展,让 AI 经 CDP 驱动本机 Chrome
+├─ computer/             # 电脑端,提供终端 / 文件 / 屏幕 / AI 助理
+└─ extension/            # Roam 浏览器插件,让助理操作本机 Chrome / Edge
 ```
 
 运行时链路:
@@ -34,7 +34,7 @@ Roam Computer (终端 / 文件 / 屏幕)
 ## 能力
 
 - 远程终端
-- AI 对话(agent):跑在电脑端,可执行命令、控制键鼠/截图、驱动 Chrome
+- AI 助理(agent,来自 agentic):跑在电脑端,可执行命令、读写和修改文件、看图、操作浏览器
 - 文件浏览、读取、上传、重命名、删除
 - 屏幕截图查看
 - 固定远程连接 session id
@@ -86,7 +86,6 @@ export default {
     SESSION_ID: '',          // 留空则每次启动随机生成
     SESSION_PASSWORD: '',    // 留空则不要密码
     DEBUG: '0',
-    BROWSER_BRIDGE_PORT: '9510', // 可选,本地浏览器 CDP 桥端口
 };
 ```
 
@@ -104,32 +103,32 @@ npm start
 
 ## AI 助理
 
-右上角宫格(应用中心)里的「助理」是内置的 agent,也是登录后的默认页;左上角菜单里是对话历史和新建对话。它跑在电脑端,模型请求从电脑直接发出,不经过 Worker。
+右上角宫格(应用中心)里的「助理」是内置的 agent,也是登录后的默认页;左上角菜单里是对话历史(置顶、拖拽排序、重命名、删除)和新建对话。agent 取自 [agentic](https://github.com/yanglongyun/agentic):跑在电脑端,模型请求从电脑直接发出,不经过 Worker。
 
-1. 打开「设置」,填 OpenAI 兼容接口的 API 地址、API Key、模型名并保存
-2. 回到「助理」直接说要做什么
+1. 打开「设置」,填 Responses 接口地址(如 `https://api.openai.com/v1/responses`)、API Key、模型并保存
+2. 回到「助理」直接说要做什么,可以附带图片(每条最多 5 张)
 
-配置、对话记录都存在电脑端 `~/.roam/roam.db`,网页端只能看到 Key 的掩码。
+配置在电脑端 `~/.roam/agent/config.json`,对话在 `~/.roam/agent/chat.db`,图片在 `~/.roam/agent/images/`;网页端只能看到 Key 的掩码。
 
 agent 可用的工具:
 
 | 工具 | 说明 |
 |---|---|
-| `shell` | 以登录 shell 执行命令,和远程终端拿到的 PATH 一致 |
-| `computer_*` / `open_app` | 截图、鼠标、键盘、打开应用(仅 macOS;鼠标和滚动需要 `brew install cliclick`) |
-| `browser_cdp` | 经 Chrome DevTools Protocol 驱动本机 Chrome,需要装 `extension/` 扩展 |
+| `shell` | 执行终端命令(macOS / Linux 用 bash,Windows 用 PowerShell),超时会杀掉整个进程组 |
+| `read` | 带行号读文本;PNG / JPEG / GIF / WebP 图片直接交给模型看 |
+| `write` | 写入完整文件,自动创建父目录 |
+| `edit` | 精确替换文本,默认要求唯一匹配 |
+| `browser` | 操作 Chrome / Edge:只能操作自己打开的标签页,每个对话一个标签组;页面里的操作用 CDP,截图会交给模型看 |
 
-上下文超过「压缩阈值」时,会自动把较早的消息总结成摘要,阈值和压缩提示词都能在设置里改。
+模型请求失败(网络、429、5xx、断流)会自动重试两次。上次回复用掉的 token 达到「压缩阈值」时,会把较早的消息写成交接摘要,保留最近的若干条;阈值、保留条数、提示词、超时和输出上限都能在设置里改。
 
-截图需要在「系统设置 → 隐私与安全性 → 屏幕录制」里授权启动 Roam 的应用;键盘输入需要「辅助功能」授权。
+### 浏览器插件
 
-### 浏览器控制
+1. Chrome / Edge 打开扩展程序页 → 打开「开发者模式」→「加载已解压的扩展程序」→ 选 `extension/`
+2. 不用填任何地址:插件经原生消息连上电脑端(电脑端启动时会把宿主登记到本机已安装的 Chromium 系浏览器,目前支持 macOS 和 Windows)
+3. 插件图标显示 `on` 后,助理就能用 `browser` 工具操作你已登录的浏览器
 
-1. `chrome://extensions` → 打开「开发者模式」→「加载已解压的扩展程序」→ 选 `extension/`
-2. 点扩展图标,填入 computer 启动日志里打印的地址:`ws://127.0.0.1:9510/cdp?token=<session id>`
-3. 显示「已连接」后,agent 就能用 `browser_cdp` 操作你已登录的 Chrome
-
-CDP 桥只监听 `127.0.0.1`,并校验 token 是否等于当前 session id。
+插件和电脑端之间走只有当前用户能连的本机管道(`~/.roam/agent/browser.sock`),不开端口。
 
 ## 保活运行
 
@@ -230,8 +229,8 @@ nssm remove Roam confirm   # 卸载
 ## 安全边界
 
 - Worker 不保存终端输出、文件内容、对话或任何业务数据
-- 真实数据保留在电脑端,对话和模型配置(含 API Key)在 `~/.roam/roam.db`
-- AI 对话能执行任意命令、操作键鼠和浏览器,权限等同于远程终端;务必设置 `SESSION_PASSWORD`
+- 真实数据保留在电脑端,助理的对话和模型配置(含 API Key)在 `~/.roam/agent/`
+- 助理能执行任意命令、读写文件、操作浏览器,权限等同于远程终端;务必设置 `SESSION_PASSWORD`
 - `SESSION_PASSWORD` 用于远程网页访问校验
 - 不要把真实 `computer/config.js` 和 `worker/wrangler.jsonc` 提交到仓库
 

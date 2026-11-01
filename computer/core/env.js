@@ -87,10 +87,8 @@ if (SESSION_ID === 'default') {
 }
 const SESSION_PASSWORD = String(resolveValue('SESSION_PASSWORD', [dotEnvValues, configValues]) || '').trim();
 const DEBUG = String(resolveValue('DEBUG', [dotEnvValues, configValues]) || '0').trim() === '1';
-// 本地 CDP 桥端口：只监听 127.0.0.1，给 browser-use 扩展连。
-const BROWSER_BRIDGE_PORT = String(resolveValue('BROWSER_BRIDGE_PORT', [dotEnvValues, configValues]) || '9510').trim();
 
-export { CLOUDFLARE_WORKER_URL, SERVER_URL, WEB_URL, SESSION_ID, SESSION_PASSWORD, DEBUG, BROWSER_BRIDGE_PORT };
+export { CLOUDFLARE_WORKER_URL, SERVER_URL, WEB_URL, SESSION_ID, SESSION_PASSWORD, DEBUG };
 export default {
     CLOUDFLARE_WORKER_URL,
     SERVER_URL,
@@ -98,5 +96,4 @@ export default {
     SESSION_ID,
     SESSION_PASSWORD,
     DEBUG,
-    BROWSER_BRIDGE_PORT,
 };

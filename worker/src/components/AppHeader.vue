@@ -3,12 +3,12 @@ import { computed } from 'vue';
 import { useRoute } from 'vue-router';
 import { useWsStore } from '@/stores/ws';
 import { useViewStore } from '@/stores/view';
-import { useChatStore } from '@/stores/chat';
+import { useAgentStore, threadTitle } from '@/stores/agent';
 import { useTerminalStore } from '@/stores/terminal';
 
 const ws = useWsStore();
 const view = useViewStore();
-const chat = useChatStore();
+const agent = useAgentStore();
 const term = useTerminalStore();
 const route = useRoute();
 
@@ -16,7 +16,10 @@ const app = computed(() => view.appOf(route.path));
 
 // 有侧栏的应用把「当前打开的东西」放在标题上，其余显示应用名
 const title = computed(() => {
-    if (route.name === 'chat') return chat.currentTitle || '新对话';
+    if (route.name === 'chat') {
+        if (!agent.currentId) return '新对话';
+        return threadTitle(agent.threads.find((thread) => thread.id === agent.currentId));
+    }
     if (route.name === 'terminal') {
         const tab = term.terminalTabs.find((item) => item.id === term.activeTerminalId);
         return tab ? term.terminalTitle(tab) : '终端';

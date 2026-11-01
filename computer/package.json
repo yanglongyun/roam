@@ -1,7 +1,7 @@
 {
   "name": "roam-computer",
   "version": "0.2.0",
-  "description": "Roam computer — 远程访问电脑端能力(终端 / 文件 / 屏幕 / AI 对话)",
+  "description": "Roam computer — 远程访问电脑端能力(终端 / 文件 / 屏幕 / AI 助理)",
   "type": "module",
   "main": "index.js",
   "engines": {

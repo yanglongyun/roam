@@ -1,178 +1,192 @@
-// browser-use — 用一条 WebSocket 驱动 Chrome 的 CDP 通道。
-//
-// 设计：插件只是一根“管子”——连上你填的 wss，把收到的命令灌给 chrome.debugger
-// （= Chrome DevTools Protocol），把结果/事件回传。没有高层 helper：控制端（AI/agent）
-// 直接发 CDP，绝大多数 DOM 操作用 Runtime.evaluate 跑 JS 即可。
-//
-// 线协议（与具体项目无关）：
-//   收  {id, method, params, meta?}        method ∈ cdp | attach | detach | listTabs | status | ping
-//   回  {id, ok:true, result, meta?}  /  {id, ok:false, error, meta?}
-//   事件 {type:"event", tabId, method, params}     （CDP 事件原样推回）
-// meta 原样回显——中枢(Worker)把“谁发的”塞进 meta 用于回包路由，插件不关心路由。
-//
-// session/token 都在 wss 的 query 里，由中枢/Worker 校验；插件只管连那条 URL。
+// Roam 浏览器插件：通过原生消息连上 Roam 电脑端，接收助理的命令。
+// 页面里面的事一律转发给 Chrome 开发者工具协议（CDP）；标签页和标签组用插件接口管理。
+// 只操作 Agent 自己打开的标签页；每个对话的标签页放进一个以对话标题命名的标签组。
+// 鼠标键盘事件和截图需要标签页在前台，插件会自动切过去。
+// Agent 操作期间浏览器顶部会显示“正在调试此浏览器”，这是 Chrome 对 debugger 权限的强制提示。
+const HOST = "yun.roam.browser";
+let port = null;
 
-const CDP_VERSION = "1.3";
-const KEEPALIVE_ALARM = "browser-use-keepalive";
-
-let ws = null;
-let connected = false;
-let reconnectDelay = 1000;
-let reconnectTimer = null;
-const attached = new Set(); // 已 attach debugger 的 tabId
-
-function send(obj) {
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify(obj));
-    return true;
-  }
-  return false;
-}
-
-function setBadge() {
-  try {
-    chrome.action.setBadgeText({ text: connected ? "on" : "" });
-    chrome.action.setBadgeBackgroundColor({ color: connected ? "#19a85e" : "#888888" });
-  } catch {}
-}
-
-async function loadUrl() {
-  const { wsUrl } = await chrome.storage.local.get("wsUrl");
-  return (wsUrl || "").trim();
-}
-
-function scheduleReconnect() {
-  clearTimeout(reconnectTimer);
-  reconnectTimer = setTimeout(connect, reconnectDelay);
-  reconnectDelay = Math.min(reconnectDelay * 2, 30000);
-}
-
-async function connect() {
-  clearTimeout(reconnectTimer);
-  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
-  const url = await loadUrl();
-  if (!url) { connected = false; setBadge(); return; }
-  try {
-    ws = new WebSocket(url);
-  } catch {
-    scheduleReconnect();
+// Roam 电脑端没开时连不上；每 30 秒由定时器唤醒重试一次。
+function connect() {
+  if (port) {
     return;
   }
-  ws.onopen = () => {
-    connected = true;
-    reconnectDelay = 1000;
-    setBadge();
-    send({ type: "hello", role: "browser-use", version: chrome.runtime.getManifest().version });
-  };
-  ws.onmessage = (ev) => {
-    let msg;
-    try { msg = JSON.parse(ev.data); } catch { return; }
-    handle(msg);
-  };
-  ws.onclose = () => { connected = false; setBadge(); scheduleReconnect(); };
-  ws.onerror = () => { try { ws.close(); } catch {} };
+  port = chrome.runtime.connectNative(HOST);
+  port.onMessage.addListener((message) => void handle(message));
+  port.onDisconnect.addListener(() => {
+    port = null;
+    void chrome.action.setBadgeText({ text: "" });
+  });
+  void chrome.action.setBadgeBackgroundColor({ color: "#2f6df6" });
+  void chrome.action.setBadgeText({ text: "on" });
 }
+chrome.alarms.create("connect", { periodInMinutes: 0.5 });
+chrome.alarms.onAlarm.addListener(connect);
+chrome.runtime.onStartup.addListener(connect);
+chrome.runtime.onInstalled.addListener(connect);
+connect();
 
-function disconnect() {
-  clearTimeout(reconnectTimer);
-  if (ws) { try { ws.close(); } catch {} ws = null; }
-  connected = false;
-  setBadge();
-}
-
-async function activeTabId() {
-  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-  return tab ? tab.id : undefined;
-}
-
-async function ensureAttached(tabId) {
-  if (attached.has(tabId)) return;
-  await chrome.debugger.attach({ tabId }, CDP_VERSION);
-  attached.add(tabId);
-}
-
-async function handle(msg) {
-  if (!msg || msg.type === "pong" || msg.type === "hello") return;
-  const { id, method, params = {}, meta } = msg;
-  if (id == null || !method) return; // 不是请求就忽略
+async function handle(message) {
   try {
-    let result;
-    switch (method) {
-      case "ping":
-        result = { pong: true };
-        break;
-      case "status":
-        result = { connected, attached: [...attached] };
-        break;
-      case "listTabs": {
-        const tabs = await chrome.tabs.query({});
-        result = tabs.map((t) => ({ id: t.id, url: t.url, title: t.title, active: t.active, windowId: t.windowId }));
-        break;
-      }
-      case "attach": {
-        const tabId = params.tabId ?? (await activeTabId());
-        if (tabId == null) throw new Error("no tab to attach");
-        await ensureAttached(tabId);
-        result = { tabId };
-        break;
-      }
-      case "detach": {
-        const tabId = params.tabId;
-        if (tabId != null && attached.has(tabId)) {
-          await chrome.debugger.detach({ tabId });
-          attached.delete(tabId);
-        }
-        result = { detached: tabId ?? null };
-        break;
-      }
-      case "cdp": {
-        // params: { tabId?, method: "Page.navigate", params: {...} }
-        const tabId = params.tabId ?? (await activeTabId());
-        if (tabId == null) throw new Error("no tab for cdp");
-        await ensureAttached(tabId);
-        result = await chrome.debugger.sendCommand({ tabId }, params.method, params.params || {});
-        break;
-      }
-      default:
-        throw new Error("unknown method: " + method);
-    }
-    send({ id, ok: true, result, meta });
-  } catch (e) {
-    send({ id, ok: false, error: String((e && e.message) || e), meta });
+    const result = await run(message.action, message.args || {});
+    port?.postMessage({ id: message.id, result });
+  } catch (error) {
+    port?.postMessage({ id: message.id, error: error.message });
   }
 }
 
-// CDP 事件 → 推回中枢（控制端可订阅 Page.loadEventFired、Network.* 等）
-chrome.debugger.onEvent.addListener((source, method, params) => {
-  send({ type: "event", tabId: source.tabId, method, params });
-});
-chrome.debugger.onDetach.addListener((source, reason) => {
-  if (source.tabId != null) attached.delete(source.tabId);
-  send({ type: "event", tabId: source.tabId, method: "_detached", params: { reason } });
-});
-chrome.tabs.onRemoved.addListener((tabId) => attached.delete(tabId));
+// args.session 是 { id, title }：命令来自哪个对话，用来决定标签组。
+async function run(action, args) {
+  switch (action) {
+    case "tabs":
+      return listTabs();
+    case "open":
+      return openTab(args);
+    case "close": {
+      const id = await agentTab(args.tab);
+      await chrome.tabs.remove(id);
+      await forget(id);
+      return { closed: id };
+    }
+    case "cdp": {
+      const id = await agentTab(args.tab);
+      if (typeof args.method !== "string" || !args.method) {
+        throw new Error("缺少 method");
+      }
+      // 后台标签页不处理鼠标键盘事件，截图也可能卡住：这类命令先把标签页切到前台。
+      if (args.method.startsWith("Input.") || args.method === "Page.captureScreenshot") {
+        if (!(await chrome.tabs.get(id)).active) {
+          await cdp(id, "Page.bringToFront", {});
+          await sleep(200);
+        }
+      }
+      return cdp(id, args.method, args.params || {});
+    }
+    default:
+      throw new Error(`不支持的操作：${action}`);
+  }
+}
 
-// popup 控制
-chrome.runtime.onMessage.addListener((req, _sender, sendResponse) => {
-  if (req && req.cmd === "getStatus") { sendResponse({ connected, attached: [...attached] }); return; }
-  if (req && req.cmd === "connect") { connect(); sendResponse({ ok: true }); return; }
-  if (req && req.cmd === "disconnect") { disconnect(); sendResponse({ ok: true }); return; }
-  return false;
-});
+// ── Agent 的标签页 ──────────────────────────────────────────
+// 标签页 ID 和对话对应的标签组记在会话存储里，插件后台被浏览器挂起再唤醒也不会丢。
+async function agentTabs() {
+  const { tabs = [] } = await chrome.storage.session.get("tabs");
+  return tabs;
+}
+async function remember(id) {
+  const tabs = await agentTabs();
+  if (!tabs.includes(id)) {
+    await chrome.storage.session.set({ tabs: [...tabs, id] });
+  }
+}
+async function forget(id) {
+  const tabs = await agentTabs();
+  await chrome.storage.session.set({ tabs: tabs.filter((tab) => tab !== id) });
+}
+chrome.tabs.onRemoved.addListener((id) => void forget(id));
 
-// 改了地址就重连
-chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === "local" && changes.wsUrl) { disconnect(); connect(); }
-});
+async function agentTab(id) {
+  if (!Number.isInteger(id)) {
+    throw new Error("缺少 tab");
+  }
+  if (!(await agentTabs()).includes(id)) {
+    throw new Error("只能操作 Roam 助理自己打开的标签页，请先用 open 打开");
+  }
+  return id;
+}
 
-// MV3 保活 + 守连：~30s 一次（心跳会重置 SW 闲置计时；断了就重连）
-chrome.alarms.create(KEEPALIVE_ALARM, { periodInMinutes: 0.5 });
-chrome.alarms.onAlarm.addListener((a) => {
-  if (a.name !== KEEPALIVE_ALARM) return;
-  if (connected) send({ type: "ping" });
-  else connect();
-});
+async function describe(id) {
+  const tab = await chrome.tabs.get(id);
+  let group = "";
+  if (tab.groupId >= 0) {
+    group = (await chrome.tabGroups.get(tab.groupId)).title || "";
+  }
+  return { tab: tab.id, title: tab.title || "", url: tab.url || "", group };
+}
 
-chrome.runtime.onStartup.addListener(connect);
-chrome.runtime.onInstalled.addListener(connect);
-connect(); // SW 冷启动也连一次
+async function listTabs() {
+  const tabs = [];
+  for (const id of await agentTabs()) {
+    try {
+      tabs.push(await describe(id));
+    } catch {
+      await forget(id);
+    }
+  }
+  return { tabs };
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// 等页面加载完成，最多 15 秒；超时也返回当前状态，交给 Agent 判断。
+async function waitLoad(id) {
+  const deadline = Date.now() + 15000;
+  while (Date.now() < deadline) {
+    if ((await chrome.tabs.get(id)).status === "complete") {
+      return;
+    }
+    await sleep(200);
+  }
+}
+
+// 不带 tab 时新开一个标签页，放进这个对话的标签组；带 tab 时在这个标签页里跳转。
+async function openTab(args) {
+  if (typeof args.url !== "string" || !/^https?:\/\//.test(args.url)) {
+    throw new Error("url 必须是 http 或 https 地址");
+  }
+  let id;
+  if (args.tab === undefined) {
+    const tab = await chrome.tabs.create({ url: args.url, active: false });
+    id = tab.id;
+    await remember(id);
+    await addToGroup(id, args.session);
+  } else {
+    id = await agentTab(args.tab);
+    await chrome.tabs.update(id, { url: args.url });
+  }
+  // 刚发起跳转时状态可能还是上一个页面的 complete，先等一下再看。
+  await sleep(300);
+  await waitLoad(id);
+  return describe(id);
+}
+
+// 每个对话一个标签组，组名是对话标题；标题改了下次打开时跟着改。用户关掉了组就新建一个。
+async function addToGroup(id, session) {
+  const key = session?.id || "";
+  let title = "Roam";
+  if (session?.title) {
+    title = session.title.slice(0, 40);
+  }
+  const { groups = {} } = await chrome.storage.session.get("groups");
+  if (groups[key] !== undefined) {
+    try {
+      await chrome.tabs.group({ groupId: groups[key], tabIds: [id] });
+      await chrome.tabGroups.update(groups[key], { title });
+      return;
+    } catch {
+      // 标签组已经不在了，下面新建一个。
+    }
+  }
+  const groupId = await chrome.tabs.group({ tabIds: [id] });
+  await chrome.tabGroups.update(groupId, { title, color: "blue" });
+  await chrome.storage.session.set({ groups: { ...groups, [key]: groupId } });
+}
+
+// ── CDP ────────────────────────────────────────────────────
+const attached = new Set();
+chrome.debugger.onDetach.addListener((source) => attached.delete(source.tabId));
+
+// 第一次操作某个标签页时挂上调试器，之后一直挂着，直到标签页关闭。
+async function cdp(id, method, params) {
+  if (!attached.has(id)) {
+    try {
+      await chrome.debugger.attach({ tabId: id }, "1.3");
+    } catch (error) {
+      if (!/already attached/i.test(error.message)) {
+        throw new Error(`无法控制这个标签页：${error.message}（打开了开发者工具时会冲突）`);
+      }
+    }
+    attached.add(id);
+  }
+  return chrome.debugger.sendCommand({ tabId: id }, method, params);
+}
