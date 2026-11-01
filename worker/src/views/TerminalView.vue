@@ -3,7 +3,6 @@ import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue';
 import { useWsStore } from '@/stores/ws';
 import { useTerminalStore } from '@/stores/terminal';
 import { useSnippetsStore } from '@/stores/snippets';
-import TerminalToolbar from '@/components/terminal/TerminalToolbar.vue';
 import BottomPanel from '@/components/terminal/BottomPanel.vue';
 import InputBar from '@/components/terminal/InputBar.vue';
 import SnippetModal from '@/components/terminal/SnippetModal.vue';
@@ -72,8 +71,6 @@ onUnmounted(() => {
 
 <template>
     <div class="flex min-h-0 flex-1 flex-col">
-        <TerminalToolbar v-show="ws.showActions" />
-
         <div class="relative min-h-0 flex-1 bg-black">
             <main
                 v-for="tab in term.terminalTabs"

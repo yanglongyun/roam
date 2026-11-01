@@ -3,7 +3,8 @@ import { computed, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useWsStore } from '@/stores/ws';
 import AppHeader from '@/components/AppHeader.vue';
-import AppDrawer from '@/components/AppDrawer.vue';
+import SideDrawer from '@/components/SideDrawer.vue';
+import AppCenter from '@/components/AppCenter.vue';
 import ToastHost from '@/components/ToastHost.vue';
 import ConnectionGate from '@/components/ConnectionGate.vue';
 
@@ -32,7 +33,8 @@ watch(
 
 <template>
     <AppHeader v-if="showChrome" />
-    <AppDrawer v-if="showChrome" />
+    <SideDrawer v-if="showChrome" />
+    <AppCenter v-if="showChrome" />
 
     <router-view v-slot="{ Component }">
         <keep-alive>

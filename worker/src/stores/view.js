@@ -2,18 +2,24 @@ import { defineStore } from 'pinia';
 import { ref } from 'vue';
 
 export const useViewStore = defineStore('view', () => {
-    const showDrawer = ref(false);
+    // 左上角汉堡菜单：内容随当前应用变化（助理=对话历史，终端=终端列表），无侧栏的应用不显示
+    const showSide = ref(false);
+    // 右上角宫格：应用中心
+    const showApps = ref(false);
 
-    const navItems = [
+    // side：该应用是否有左侧菜单
+    const apps = [
+        {
+            path: '/chat',
+            label: '助理',
+            side: true,
+            iconPath: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z',
+        },
         {
             path: '/terminal',
             label: '终端',
+            side: true,
             iconPath: 'M4 17l6-6-6-6 M12 19h8',
-        },
-        {
-            path: '/chat',
-            label: '对话',
-            iconPath: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z',
         },
         {
             path: '/files',
@@ -37,8 +43,14 @@ export const useViewStore = defineStore('view', () => {
         },
     ];
 
-    function toggleDrawer() { showDrawer.value = !showDrawer.value; }
-    function closeDrawer() { showDrawer.value = false; }
+    function appOf(path) {
+        return apps.find((item) => item.path === path) || null;
+    }
 
-    return { showDrawer, navItems, toggleDrawer, closeDrawer };
+    function openSide() { showApps.value = false; showSide.value = true; }
+    function closeSide() { showSide.value = false; }
+    function toggleApps() { showApps.value = !showApps.value; }
+    function closeApps() { showApps.value = false; }
+
+    return { showSide, showApps, apps, appOf, openSide, closeSide, toggleApps, closeApps };
 });

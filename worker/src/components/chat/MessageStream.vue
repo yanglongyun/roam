@@ -76,7 +76,7 @@ function goSettings() {
             <div v-else-if="chat.hasMore && chat.messages.length" class="py-1 text-center text-xs text-zinc-600">↑ 上滑加载更早</div>
 
             <div v-if="!chat.messages.length" class="py-16 text-center">
-                <div class="font-serif text-2xl font-bold tracking-tight text-zinc-100">Roam <em class="text-emerald-400">助手</em></div>
+                <div class="font-serif text-2xl font-bold tracking-tight text-zinc-100">Roam <em class="text-emerald-400">助理</em></div>
                 <div class="mx-auto mt-3 max-w-sm text-sm leading-relaxed text-zinc-500">
                     跑在你电脑上的 AI，可以执行命令、操作浏览器和桌面。直接说你想做什么。
                 </div>

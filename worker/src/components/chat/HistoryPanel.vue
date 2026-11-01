@@ -4,7 +4,7 @@ import { useChatStore } from '@/stores/chat';
 import { fmtTime } from '@/lib/chat/format';
 
 const chat = useChatStore();
-const emit = defineEmits(['close', 'newChat']);
+const emit = defineEmits(['close']);
 
 const groups = computed(() => {
     const now = new Date();
@@ -29,6 +29,11 @@ async function pickChat(id) {
     await chat.openChat(id);
 }
 
+async function newChat() {
+    emit('close');
+    await chat.newChat();
+}
+
 async function doRename(conversation) {
     const title = window.prompt('重命名对话', conversation.title || '');
     if (title != null && title.trim()) await chat.rename(conversation.id, title.trim());
@@ -42,9 +47,9 @@ async function doDelete(conversation) {
 </script>
 
 <template>
-    <aside class="flex h-full min-h-0 flex-col overflow-hidden border-r border-zinc-800 bg-zinc-900">
+    <div class="flex min-h-0 flex-col overflow-hidden">
         <div class="shrink-0 p-2">
-            <button @click="emit('newChat')"
+            <button @click="newChat"
                 class="flex h-9 w-full items-center gap-2 rounded-lg px-3 text-left text-sm text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100">
                 <span class="text-base leading-none text-zinc-600">＋</span>
                 <span>新对话</span>
@@ -77,7 +82,7 @@ async function doDelete(conversation) {
                 </div>
             </template>
         </div>
-    </aside>
+    </div>
 </template>
 
 <style scoped>

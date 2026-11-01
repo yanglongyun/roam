@@ -59,6 +59,10 @@ async function save() {
     setTimeout(() => { saved.value = false; }, 1800);
 }
 
+async function copy(text) {
+    try { await navigator.clipboard.writeText(text); } catch {}
+}
+
 onMounted(load);
 watch(() => ws.showActions, (v) => { if (v) load(); });
 </script>
@@ -126,6 +130,26 @@ watch(() => ws.showActions, (v) => { if (v) load(); });
                         重置
                     </button>
                 </div>
+
+                <section class="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
+                    <h3 class="mb-3 text-xs font-semibold uppercase tracking-wider text-zinc-500">关于</h3>
+                    <p class="text-xs leading-relaxed text-zinc-500">本项目把本机终端 / 文件 / 屏幕 / AI 助理带到任意浏览器,Worker 只做中继,数据不落地。</p>
+                    <dl class="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+                        <dt class="text-zinc-500">连接</dt>
+                        <dd class="truncate text-right text-zinc-100">{{ ws.statusText }}</dd>
+                        <dt class="text-zinc-500">项目</dt>
+                        <dd class="truncate text-right">
+                            <a href="https://github.com/valueriver/roam" target="_blank" rel="noopener"
+                                class="text-emerald-400 hover:text-emerald-300">github.com/valueriver/roam</a>
+                        </dd>
+                        <dt class="text-zinc-500">微信</dt>
+                        <dd class="text-right">
+                            <button @click="copy('agentready')"
+                                class="font-mono text-zinc-200 hover:text-emerald-300 transition-colors"
+                                title="点击复制">agentready</button>
+                        </dd>
+                    </dl>
+                </section>
             </div>
         </main>
     </div>
