@@ -1,12 +1,11 @@
 <script setup>
 import { computed } from 'vue';
 import { useRoute } from 'vue-router';
-import { useWsStore } from '@/stores/ws';
 import { useViewStore } from '@/stores/view';
 import { useAgentStore, threadTitle } from '@/stores/agent';
 import { useTerminalStore } from '@/stores/terminal';
+import DevicePicker from '@/components/DevicePicker.vue';
 
-const ws = useWsStore();
 const view = useViewStore();
 const agent = useAgentStore();
 const term = useTerminalStore();
@@ -41,17 +40,7 @@ const title = computed(() => {
             <div class="truncate font-serif font-bold text-[15px] tracking-tight text-zinc-100">{{ title }}</div>
         </div>
 
-        <div class="flex shrink-0 items-center gap-1.5" :title="ws.statusText">
-            <span
-                class="w-2 h-2 rounded-full shrink-0"
-                :class="{
-                    'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]': ws.state === 'connected',
-                    'bg-amber-400 pulse': (ws.state === 'pending' || ws.isReconnecting) && !ws.connectionLost,
-                    'bg-red-500': ws.connectionLost || (ws.state === 'offline' && !ws.isReconnecting)
-                }"
-            ></span>
-            <span class="hidden sm:inline truncate text-xs text-zinc-400">{{ ws.statusText }}</span>
-        </div>
+        <DevicePicker class="shrink-0" />
 
         <button
             @click="view.toggleApps"

@@ -1,10 +1,12 @@
 import { defineStore } from 'pinia';
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { useToastStore } from './toast';
+import { useWsStore } from './ws';
 import { useFsClient } from '@/composables/useFsClient';
 
 export const useFilesStore = defineStore('files', () => {
     const toast = useToastStore();
+    const ws = useWsStore();
     const fs = useFsClient();
 
     const entries = ref([]);
@@ -294,6 +296,20 @@ export const useFilesStore = defineStore('files', () => {
     function ensureLoaded() {
         if (!homePath.value) loadHome();
     }
+
+    // 换设备：目录结构是另一台机器的了，清掉重新从它的用户目录开始。
+    watch(() => ws.currentDeviceId, () => {
+        entries.value = [];
+        cwd.value = '';
+        homePath.value = '';
+        errorMsg.value = '';
+        closePreview();
+        actionSheet.value = null;
+        if (ws.canUseActions) loadHome();
+    });
+    watch(() => ws.canUseActions, (ready) => {
+        if (ready && !homePath.value) loadHome();
+    });
 
     return {
         entries, viewEntries, cwd, homePath, pathSep, loading, errorMsg,

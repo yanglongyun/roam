@@ -1,19 +1,26 @@
 // 工具定义：留在云端的只有 sql，其余都要发给设备执行。
 import { SCHEMA_HINT } from './sql.js';
 
-// 这些工具必须由设备执行，设备离线时不下发给模型。
+// 这些工具必须由设备执行，没有任何设备在线时不下发给模型。
 export const DEVICE_TOOLS = new Set(['shell', 'read', 'write', 'edit', 'browser']);
+
+// 每个设备工具都带可选的 device：不填就在当前会话的默认设备上执行。
+const deviceParam = {
+  type: 'string',
+  description: '执行设备的 id；不填用当前会话的默认设备。设备列表见系统提示',
+};
 
 const deviceTools = [
   {
     type: 'function',
     name: 'shell',
-    description: '执行终端命令并返回合并输出与退出码。',
+    description: '在指定设备上执行终端命令并返回合并输出与退出码。',
     parameters: {
       type: 'object',
       properties: {
         command: { type: 'string', description: '终端命令' },
         workdir: { type: 'string', description: '可选工作目录' },
+        device: deviceParam,
       },
       required: ['command'],
     },
@@ -21,13 +28,14 @@ const deviceTools = [
   {
     type: 'function',
     name: 'read',
-    description: '读取带行号文本或图片。',
+    description: '读取指定设备上的带行号文本或图片。',
     parameters: {
       type: 'object',
       properties: {
         path: { type: 'string', description: '文件路径' },
         offset: { type: 'integer', description: '起始行，默认 1' },
         limit: { type: 'integer', description: '最多行数，默认 2000' },
+        device: deviceParam,
       },
       required: ['path'],
     },
@@ -35,12 +43,13 @@ const deviceTools = [
   {
     type: 'function',
     name: 'write',
-    description: '完整写入文件，自动创建父目录。',
+    description: '在指定设备上完整写入文件，自动创建父目录。',
     parameters: {
       type: 'object',
       properties: {
         path: { type: 'string', description: '文件路径' },
         content: { type: 'string', description: '完整内容' },
+        device: deviceParam,
       },
       required: ['path', 'content'],
     },
@@ -48,7 +57,7 @@ const deviceTools = [
   {
     type: 'function',
     name: 'edit',
-    description: '精确替换文本，默认要求唯一匹配。',
+    description: '在指定设备上精确替换文本，默认要求唯一匹配。',
     parameters: {
       type: 'object',
       properties: {
@@ -56,6 +65,7 @@ const deviceTools = [
         old_string: { type: 'string', description: '原文' },
         new_string: { type: 'string', description: '新内容' },
         replace_all: { type: 'boolean', description: '替换全部' },
+        device: deviceParam,
       },
       required: ['path', 'old_string', 'new_string'],
     },
@@ -63,7 +73,7 @@ const deviceTools = [
   {
     type: 'function',
     name: 'browser',
-    description: `控制用户的浏览器（Chrome / Edge），能力等同开发者工具，所有标签页都能操作，包括用户自己打开、已经登录的页面。
+    description: `控制指定设备上用户的浏览器（Chrome / Edge），能力等同开发者工具，所有标签页都能操作，包括用户自己打开、已经登录的页面。
 - tabs 列出所有窗口的标签页，标出当前页和你打开的页
 - open 打开网址（https、file 等）并等加载完：不带 tab 新开一个，放进以当前对话标题命名的标签组；带 tab 在那个标签页跳转
 - close 关闭标签页；detach 断开对某个标签页的调试，顶部的“正在调试”提示会消失
@@ -96,6 +106,7 @@ const deviceTools = [
           description: 'chrome 接口的参数列表，按顺序传给接口',
           items: { type: ['object', 'string', 'number', 'boolean', 'null'] },
         },
+        device: deviceParam,
       },
       required: ['action'],
     },
@@ -120,21 +131,56 @@ const sqlTool = {
   },
 };
 
-// 设备在线才带上设备工具；离线时模型只知道 sql。
-export function listTools({ deviceOnline = false } = {}) {
-  return deviceOnline ? [...deviceTools, sqlTool] : [sqlTool];
+// 有设备在线才带上设备工具；全部离线时模型只知道 sql。
+export function listTools({ anyOnline = false } = {}) {
+  return anyOnline ? [...deviceTools, sqlTool] : [sqlTool];
+}
+
+function label(device) {
+  return device.name || device.host || device.id;
+}
+
+// 给系统提示用的设备清单：每台一两行，标出在线状态和当前会话的默认设备。
+export function describeDevices({ devices = [], sessionDeviceId = '' } = {}) {
+  if (!devices.length) return '还没有任何设备接入过。';
+  const lines = devices.map((device) => {
+    const parts = [
+      `- ${label(device)}（id: ${device.id}）`,
+      device.online ? '在线' : '离线',
+    ];
+    if (device.id === sessionDeviceId) parts.push('当前会话默认设备');
+    const env = [device.platform, device.arch].filter(Boolean).join('/');
+    if (env) parts.push(env);
+    if (device.username) parts.push(`用户 ${device.username}`);
+    if (device.workdir) parts.push(`工作目录 ${device.workdir}`);
+    parts.push(device.browser ? '浏览器插件已连接' : '浏览器插件未连接');
+    let text = parts.join('，');
+    if (device.description) text += `\n  ${device.description}`;
+    return text;
+  });
+  return lines.join('\n');
 }
 
 // 给系统提示补一句当前处境，避免模型看不到设备时反复尝试。
-export function describeAvailability({ deviceOnline = false, device = null, images = true } = {}) {
-  if (deviceOnline) {
-    const name = device?.name || device?.host || '设备';
-    const note = images
-      ? ''
-      : '这个部署没有图片存储：read 读图片、browser 截图都拿不到图片内容，看网页时用 Runtime.evaluate 读文字和元素位置。';
-    return `设备「${name}」已连接，可以用 shell / read / write / edit / browser 操作它，也可以用 sql 查自己的数据。${note}`;
+export function describeAvailability({ devices = [], sessionDeviceId = '', images = true } = {}) {
+  const online = devices.filter((device) => device.online);
+  if (!online.length) {
+    return '所有设备当前都离线：只有 sql 工具可用，shell / read / write / edit / browser 都不可用，需要设备上的操作时如实说明并请用户连上设备。';
   }
-  return '设备当前离线：只有 sql 工具可用，shell / read / write / edit / browser 都不可用，需要设备上的操作时如实说明并请用户连上设备。';
+  const note = images
+    ? ''
+    : '这个部署没有图片存储：read 读图片、browser 截图都拿不到图片内容，看网页时用 Runtime.evaluate 读文字和元素位置。';
+  const current = devices.find((device) => device.id === sessionDeviceId);
+  let where;
+  if (current?.online) {
+    where = `当前会话的默认设备是「${label(current)}」，不带 device 参数的工具调用都在它上面执行。`;
+  } else if (current) {
+    where = `当前会话的默认设备「${label(current)}」离线：不带 device 参数的工具调用会失败，要在别的设备上操作必须明确传 device。`;
+  } else {
+    where = '当前会话没有默认设备：调用设备工具时必须明确传 device。';
+  }
+  const names = online.map((device) => `「${label(device)}」`).join('、');
+  return `在线设备：${names}。${where}可以用 shell / read / write / edit / browser 操作设备，也可以用 sql 查自己的数据。${note}`;
 }
 
-export default { listTools, describeAvailability, DEVICE_TOOLS };
+export default { listTools, describeDevices, describeAvailability, DEVICE_TOOLS };

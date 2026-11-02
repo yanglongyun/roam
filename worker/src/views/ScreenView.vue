@@ -58,7 +58,11 @@ function callCapture(timeoutMs = 30000) {
             reject(new Error('截图响应超时'));
         }, timeoutMs);
         pending.set(reqId, { resolve, reject, timer });
-        ws.sendMsg({ type: 'screen.capture', to: 'desktop', data: { reqId } });
+        if (!ws.sendToDevice('screen.capture', { reqId })) {
+            clearTimeout(timer);
+            pending.delete(reqId);
+            reject(new Error('设备未连接'));
+        }
     });
 }
 
@@ -93,6 +97,14 @@ watch(() => ws.canUseActions, (ready) => {
     if (ready && !imageUrl.value && !loading.value) capture();
 });
 
+// 换设备：上一台的截图没意义了，清掉重截。
+watch(() => ws.currentDeviceId, () => {
+    clearImage();
+    errorMsg.value = '';
+    capturedAt.value = 0;
+    if (ws.canUseActions) capture();
+});
+
 onUnmounted(() => {
     clearImage();
 });
@@ -125,7 +137,11 @@ onUnmounted(() => {
 
         <main class="relative min-h-0 flex-1 overflow-auto bg-black">
             <div v-if="!ws.showActions && !ws.isReconnecting" class="flex h-full items-center justify-center px-4 text-center text-sm text-zinc-500">
-                等待客户端连接和认证
+                等待登录
+            </div>
+
+            <div v-else-if="!ws.desktopOnline" class="flex h-full items-center justify-center px-4 text-center text-sm text-zinc-500">
+                {{ ws.devices.length ? `${ws.deviceLabel(ws.currentDevice)} 离线` : '还没有设备接入' }}
             </div>
 
             <div v-else-if="errorMsg" class="flex h-full items-center justify-center px-4 text-center">

@@ -61,7 +61,7 @@ export function useFsClient() {
                 resolve: (v) => { clearTimeout(timer); pending.delete(reqId); resolve(v); },
                 reject: (e) => { clearTimeout(timer); pending.delete(reqId); reject(e); },
             });
-            if (!ws.sendMsg({ type, to: 'desktop', data: { reqId, ...data } })) {
+            if (!ws.sendToDevice(type, { reqId, ...data })) {
                 clearTimeout(timer);
                 pending.delete(reqId);
                 reject(new Error('客户端未连接'));
@@ -124,7 +124,7 @@ export function useFsClient() {
                 },
                 reject: (e) => { clearTimeout(timer); pending.delete(reqId); reject(e); },
             });
-            if (!ws.sendMsg({ type: 'fs.read', to: 'desktop', data: { reqId, path } })) {
+            if (!ws.sendToDevice('fs.read', { reqId, path })) {
                 clearTimeout(timer);
                 pending.delete(reqId);
                 reject(new Error('客户端未连接'));
@@ -136,7 +136,7 @@ export function useFsClient() {
         if (!ws.canUseActions) throw new Error('客户端未连接');
         const reqId = newReqId();
         const start = waitOnce(reqId, 15000);
-        if (!ws.sendMsg({ type: 'fs.upload.start', to: 'desktop', data: { reqId, path, size: file.size, overwrite } })) {
+        if (!ws.sendToDevice('fs.upload.start', { reqId, path, size: file.size, overwrite })) {
             start.cancel(new Error('客户端未连接'));
             await start.promise;
         }
@@ -144,7 +144,7 @@ export function useFsClient() {
 
         if (file.size === 0) {
             const eof = waitOnce(reqId, 15000);
-            if (!ws.sendMsg({ type: 'fs.upload.chunk', to: 'desktop', data: { reqId, seq: 0, data: '', eof: true } })) {
+            if (!ws.sendToDevice('fs.upload.chunk', { reqId, seq: 0, data: '', eof: true })) {
                 eof.cancel(new Error('客户端未连接'));
                 await eof.promise;
             }
@@ -160,7 +160,7 @@ export function useFsClient() {
             const b64 = await sliceToBase64(file.slice(offset, end));
             const eof = end >= file.size;
             const ack = waitOnce(reqId, 30000);
-            if (!ws.sendMsg({ type: 'fs.upload.chunk', to: 'desktop', data: { reqId, seq, data: b64, eof } })) {
+            if (!ws.sendToDevice('fs.upload.chunk', { reqId, seq, data: b64, eof })) {
                 ack.cancel(new Error('客户端未连接'));
                 await ack.promise;
             }

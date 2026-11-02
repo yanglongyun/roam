@@ -49,7 +49,11 @@ function callOnce(timeoutMs = 8000) {
             reject(new Error('请求超时'));
         }, timeoutMs);
         pending.set(reqId, { resolve, reject, timer });
-        ws.sendMsg({ type: 'status.request', to: 'desktop', data: { reqId } });
+        if (!ws.sendToDevice('status.request', { reqId })) {
+            clearTimeout(timer);
+            pending.delete(reqId);
+            reject(new Error('设备未连接'));
+        }
     });
 }
 
@@ -116,6 +120,14 @@ watch(() => ws.canUseActions, (ready) => {
     else stopPolling();
 });
 
+// 换设备：清掉上一台的数据，马上拉新设备的。
+watch(() => ws.currentDeviceId, () => {
+    data.value = null;
+    capturedAt.value = 0;
+    errorMsg.value = '';
+    if (ws.canUseActions) startPolling(5000);
+});
+
 onUnmounted(stopPolling);
 </script>
 
@@ -135,7 +147,8 @@ onUnmounted(stopPolling);
                 </svg>
                 <span>{{ loading ? '获取中' : '刷新' }}</span>
             </button>
-            <div class="ml-auto text-xs text-zinc-500">
+            <div class="ml-auto min-w-0 text-right text-xs text-zinc-500">
+                <div class="truncate text-zinc-300">{{ ws.deviceLabel(ws.currentDevice) }}</div>
                 <span v-if="errorMsg" class="text-rose-300">{{ errorMsg }}</span>
                 <span v-else>每 5 秒自动刷新 · {{ capturedText }}</span>
             </div>
@@ -143,7 +156,19 @@ onUnmounted(stopPolling);
 
         <main v-if="!ws.showActions && !ws.isReconnecting"
             class="flex-1 min-h-0 flex items-center justify-center text-sm text-zinc-500">
-            等待客户端连接和认证
+            等待登录
+        </main>
+
+        <main v-else-if="!ws.desktopOnline"
+            class="flex-1 min-h-0 flex flex-col items-center justify-center gap-3 px-4 text-sm text-zinc-500">
+            <div>{{ ws.devices.length ? `${ws.deviceLabel(ws.currentDevice)} 离线` : '还没有设备接入' }}</div>
+            <div v-if="ws.devices.length > 1" class="flex flex-wrap justify-center gap-2">
+                <button v-for="device in ws.devices" :key="device.id" @click="ws.selectDevice(device.id)"
+                    class="inline-flex h-8 items-center gap-1.5 rounded border border-zinc-700 bg-zinc-800 px-3 text-xs text-zinc-100 hover:bg-zinc-700">
+                    <span class="h-1.5 w-1.5 rounded-full" :class="device.online ? 'bg-emerald-500' : 'bg-zinc-600'"></span>
+                    {{ ws.deviceLabel(device) }}
+                </button>
+            </div>
         </main>
 
         <main v-else-if="!d && loading"

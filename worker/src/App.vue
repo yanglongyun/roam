@@ -18,13 +18,14 @@ onMounted(() => {
     ws.init();
 });
 
-// 未认证 + 需要密码 → 强制去守卫页；短暂重连期间先保留当前页面。
+// 连上云端但未登录 → 回守卫页，记住原来想去的页面；短暂重连期间先保留当前页面。
 watch(
-    () => [ws.requiresPassword, ws.authenticated, ws.invalid, ws.isReconnecting],
-    ([req, authed, invalid, reconnecting]) => {
-        if (invalid) return;
-        if (req && !authed && !reconnecting && route.name !== 'guard') {
-            router.replace({ path: '/guard', query: route.query });
+    () => [ws.authenticated, ws.isReconnecting, ws.state],
+    ([authed, reconnecting, state]) => {
+        if (state !== 'connected' || authed || reconnecting) return;
+        if (route.name !== 'guard') {
+            const query = route.fullPath.length > 1 ? { redirect: route.fullPath } : {};
+            router.replace({ path: '/guard', query });
         }
     },
     { immediate: true }

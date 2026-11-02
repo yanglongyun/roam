@@ -172,7 +172,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     function sendInputRaw(input) {
         const terminalId = activeTerminalId.value;
         if (!terminalId) return;
-        ws.sendMsg({ type: 'data.input', to: 'desktop', data: { terminalId, input } });
+        ws.sendToDevice('data.input', { terminalId, input });
     }
 
     function sendResize(terminalId = activeTerminalId.value) {
@@ -180,11 +180,7 @@ export const useTerminalStore = defineStore('terminal', () => {
         const terminal = ensureTerminalInstance(terminalId);
         if (!terminal) return;
         if (terminal.cols < MIN_RESIZE_COLS || terminal.rows < MIN_RESIZE_ROWS) return;
-        ws.sendMsg({
-            type: 'system.resize',
-            to: 'desktop',
-            data: { terminalId, cols: terminal.cols, rows: terminal.rows }
-        });
+        ws.sendToDevice('system.resize', { terminalId, cols: terminal.cols, rows: terminal.rows });
     }
 
     function mountTerminal(terminalId, container) {
@@ -239,29 +235,39 @@ export const useTerminalStore = defineStore('terminal', () => {
     }
 
     function requestTerminalList() {
-        ws.sendMsg({ type: 'terminal.list', to: 'desktop', data: {} });
+        ws.sendToDevice('terminal.list', {});
+    }
+
+    // 换设备：丢掉上一台的终端实例和缓存输出，向新设备要列表。
+    function resetForDevice() {
+        for (const terminal of terminalInstances.values()) terminal.dispose();
+        terminalInstances.clear();
+        fitAddons.clear();
+        terminalContainers.clear();
+        pendingOutput.clear();
+        for (const timers of pendingFits.values()) timers.forEach(clearTimeout);
+        pendingFits.clear();
+        terminalTabs.value = [];
+        activeTerminalId.value = '';
+        if (ws.canUseActions) requestTerminalList();
     }
 
     function createTerminal({ cwd, title } = {}) {
         const dir = String(cwd || '').trim();
         if (dir) addRecentDir(dir);
-        ws.sendMsg({
-            type: 'terminal.create',
-            to: 'desktop',
-            data: { cwd: dir || undefined, title }
-        });
+        ws.sendToDevice('terminal.create', { cwd: dir || undefined, title });
     }
 
     function activateTerminal(terminalId) {
         if (!terminalId || terminalId === activeTerminalId.value) return;
         activeTerminalId.value = terminalId;
-        ws.sendMsg({ type: 'terminal.activate', to: 'desktop', data: { terminalId } });
+        ws.sendToDevice('terminal.activate', { terminalId });
         setTimeout(() => fitTerminal(terminalId), 30);
     }
 
     function closeTerminal(terminalId = activeTerminalId.value) {
         if (!terminalId) return;
-        ws.sendMsg({ type: 'terminal.close', to: 'desktop', data: { terminalId } });
+        ws.sendToDevice('terminal.close', { terminalId });
     }
 
     function ensureHandlers() {
@@ -318,12 +324,13 @@ export const useTerminalStore = defineStore('terminal', () => {
             if (msg.data?.error) toast.show(msg.data.error, 2400);
         });
 
-        ws.onMessage('connection.devices', (msg) => {
-            if (msg.data?.devices?.desktop === 'connected') {
-                requestTerminalList();
-                setTimeout(fitActiveTerminal, 80);
-            }
+        // 当前设备上线（或重连后重新可用）就重新要一次终端列表。
+        watch(() => ws.canUseActions, (ready) => {
+            if (!ready) return;
+            requestTerminalList();
+            setTimeout(fitActiveTerminal, 80);
         });
+        watch(() => ws.currentDeviceId, () => resetForDevice());
 
         watch(fontSize, (v) => {
             localStorage.setItem(FONT_KEY, String(v));
@@ -344,7 +351,7 @@ export const useTerminalStore = defineStore('terminal', () => {
 
     function restartPty() {
         if (!activeTerminalId.value) return;
-        ws.sendMsg({ type: 'system.command', to: 'desktop', data: { command: 'restart', terminalId: activeTerminalId.value } });
+        ws.sendToDevice('system.command', { command: 'restart', terminalId: activeTerminalId.value });
         toast.show('已发送重启指令');
     }
 

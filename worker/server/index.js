@@ -1,19 +1,21 @@
 import { DurableObject } from "cloudflare:workers";
 import { callOp } from "./agent/api.js";
 import { DeviceBridge } from "./agent/rpc.js";
-import { activeSession, loadConfig, setActiveSession, upsertDevice } from "./agent/store.js";
+import { listDevices, loadConfig, upsertDevice } from "./agent/store.js";
 import { readImage } from "./agent/images.js";
+
+// 整个部署只有一个 hub：所有电脑端和所有网页都连它。
+const HUB = 'hub';
+const DEVICE_ID = /^[A-Za-z0-9_-]{8,64}$/;
+const MAX_AUTH_FAILS = 10;
+const LOCKOUT_MS = 30 * 60 * 1000;
+const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 function socketId() {
     return crypto.randomUUID();
 }
 
-// 电脑端连上来要带 DEVICE_TOKEN：电脑端能免密码、能放行网页，
-// 云端又存着对话和 API Key，不校验的话谁都能冒充电脑端把数据读走。
-async function deviceTokenValid(request, env) {
-    const expected = env.DEVICE_TOKEN || '';
-    const header = request.headers.get('authorization') || '';
-    const given = header.startsWith('Bearer ') ? header.slice(7) : '';
+async function sameSecret(expected, given) {
     if (!expected || !given) return false;
     const encoder = new TextEncoder();
     const [a, b] = await Promise.all([
@@ -23,28 +25,26 @@ async function deviceTokenValid(request, env) {
     return crypto.subtle.timingSafeEqual(a, b);
 }
 
+// 电脑端连上来要带 DEVICE_TOKEN：电脑端能执行命令、读文件，
+// 云端又存着对话和 API Key，不校验的话谁都能冒充电脑端。
+function deviceTokenValid(request, env) {
+    const header = request.headers.get('authorization') || '';
+    const given = header.startsWith('Bearer ') ? header.slice(7) : '';
+    return sameSecret(env.DEVICE_TOKEN || '', given);
+}
+
 export class TerminalSessionManager extends DurableObject {
     constructor(ctx, env) {
         super(ctx, env);
-        this.requiresPassword = true;
         this.authTokens = new Map();  // token -> expiresAt
-        this.authFingerprint = null;  // 电脑端密码的指纹，变了就作废所有免密令牌
-        this.sessionName = '';        // 这个对象对应的 session（idFromName 用的名字）
+        this.authFails = 0;
+        this.lockoutUntil = 0;
         // agent 运行态：配置缓存、正在回复的会话、等设备回话的工具调用。
         this.configCache = null;
         this.runs = new Map();        // sessionId -> { controller, done, text, reasoning, runImages }
         this.bridge = new DeviceBridge();
         this.interrupted = [];        // 上次被平台中断的会话，等前端连上再补 done
         this.ctx.blockConcurrencyWhile(async () => {
-            const v = await this.ctx.storage.get('requiresPassword');
-            if (typeof v === 'boolean') this.requiresPassword = v;
-
-            const fingerprint = await this.ctx.storage.get('authFingerprint');
-            if (typeof fingerprint === 'string') this.authFingerprint = fingerprint;
-
-            const name = await this.ctx.storage.get('sessionName');
-            if (typeof name === 'string') this.sessionName = name;
-
             const tokens = await this.ctx.storage.get('authTokens');
             if (tokens && typeof tokens === 'object') {
                 const now = Date.now();
@@ -54,6 +54,10 @@ export class TerminalSessionManager extends DurableObject {
                     }
                 }
             }
+            const fails = await this.ctx.storage.get('authFails');
+            if (typeof fails === 'number') this.authFails = fails;
+            const lockout = await this.ctx.storage.get('lockoutUntil');
+            if (typeof lockout === 'number') this.lockoutUntil = lockout;
 
             // 回复中途对象被回收的话，done 永远发不出去，前端会一直显示“正在回复”。
             // 这里清掉残留标记，等前端连上后补一条中断提示。
@@ -65,6 +69,8 @@ export class TerminalSessionManager extends DurableObject {
         });
     }
 
+    /* ───────────── 免密令牌 ───────────── */
+
     async persistAuthTokens() {
         const obj = {};
         for (const [tok, exp] of this.authTokens.entries()) obj[tok] = exp;
@@ -74,8 +80,7 @@ export class TerminalSessionManager extends DurableObject {
     issueAuthToken() {
         const token = crypto.randomUUID().replace(/-/g, '')
             + crypto.randomUUID().replace(/-/g, '');
-        const expiresAt = Date.now() + 30 * 24 * 60 * 60 * 1000;  // 30 天
-        this.authTokens.set(token, expiresAt);
+        this.authTokens.set(token, Date.now() + TOKEN_TTL);
         this.persistAuthTokens();
         return token;
     }
@@ -97,60 +102,140 @@ export class TerminalSessionManager extends DurableObject {
         this.persistAuthTokens();
     }
 
+    /* ───────────── 密码校验与锁定 ───────────── */
+
+    isLocked() {
+        if (this.lockoutUntil && Date.now() >= this.lockoutUntil) {
+            this.lockoutUntil = 0;
+            this.authFails = 0;
+            this.persistAuthState();
+        }
+        return this.lockoutUntil > 0;
+    }
+
+    persistAuthState() {
+        this.ctx.storage.put('authFails', this.authFails).catch(() => {});
+        this.ctx.storage.put('lockoutUntil', this.lockoutUntil).catch(() => {});
+    }
+
+    lockoutMinutes() {
+        return Math.max(1, Math.ceil((this.lockoutUntil - Date.now()) / 60000));
+    }
+
+    async handleAuthSubmit(ws, att, data) {
+        if (!this.env.ACCESS_PASSWORD) {
+            this.sendAuthState(ws, { error: '服务端还没有设置访问密码：请管理员先执行 wrangler secret put ACCESS_PASSWORD', closed: true });
+            return;
+        }
+        if (this.isLocked()) {
+            this.sendAuthState(ws, { error: `密码错误次数过多，${this.lockoutMinutes()} 分钟后再试`, closed: true });
+            try { ws.close(4003, 'too many auth attempts'); } catch {}
+            return;
+        }
+        const ok = await sameSecret(this.env.ACCESS_PASSWORD, String(data?.password ?? ''));
+        if (!ok) {
+            this.authFails += 1;
+            if (this.authFails >= MAX_AUTH_FAILS) {
+                this.lockoutUntil = Date.now() + LOCKOUT_MS;
+                // 被锁：之前发出的免密令牌一并作废，全员重新输密码。
+                this.clearAllAuthTokens();
+                this.persistAuthState();
+                this.sendAuthState(ws, { error: `密码错误次数过多，${this.lockoutMinutes()} 分钟后再试`, closed: true });
+                try { ws.close(4003, 'too many auth attempts'); } catch {}
+                return;
+            }
+            this.persistAuthState();
+            this.sendAuthState(ws, { error: `密码错误，剩余 ${MAX_AUTH_FAILS - this.authFails} 次` });
+            return;
+        }
+        this.authFails = 0;
+        this.lockoutUntil = 0;
+        this.persistAuthState();
+        ws.serializeAttachment({ ...att, authenticated: true });
+        this.sendAuthState(ws, { sessionToken: this.issueAuthToken() });
+        this.onWebAuthenticated(ws, att);
+    }
+
+    sendAuthState(ws, extra = {}) {
+        const att = ws.deserializeAttachment() || {};
+        try {
+            ws.send(JSON.stringify({
+                type: 'auth.state',
+                to: 'web',
+                data: { authenticated: Boolean(att.authenticated), error: '', ...extra },
+            }));
+        } catch {}
+    }
+
+    // 网页登录成功：把设备列表给它，补发中断提示，并让各台电脑把终端快照发给这个网页。
+    onWebAuthenticated(ws, att) {
+        this.sendDevices(ws);
+        this.flushInterrupted();
+        for (const target of this.ctx.getWebSockets('desktop')) {
+            try {
+                target.send(JSON.stringify({ type: 'web.joined', to: 'desktop', data: { clientId: att.id } }));
+            } catch {}
+        }
+    }
+
+    /* ───────────── 连接 ───────────── */
+
     async fetch(request) {
         const url = new URL(request.url);
         if (url.pathname !== '/ws') {
             return new Response('Not Found', { status: 404 });
         }
-
         if (request.headers.get('Upgrade') !== 'websocket') {
             return new Response('Expected Upgrade: websocket', { status: 426 });
         }
 
-        const device = url.searchParams.get('device');
-        if (device !== 'desktop' && device !== 'web') {
+        const kind = url.searchParams.get('device');
+        if (kind !== 'desktop' && kind !== 'web') {
             return new Response('Missing or invalid device param', { status: 400 });
         }
-
-        const session = url.searchParams.get('session') || '';
-        if (session && session !== this.sessionName) {
-            this.sessionName = session;
-            await this.ctx.storage.put('sessionName', session);
-        }
-        // 电脑端接到哪个 session，哪个 session 就是当前 session，旧 session 从此碰不到云端数据。
-        if (device === 'desktop' && this.sessionName) {
-            await setActiveSession(this.env, this.sessionName)
-                .catch((error) => console.error('记录当前 session 失败：', error.message));
+        const deviceId = kind === 'desktop' ? (url.searchParams.get('device_id') || '') : '';
+        if (kind === 'desktop' && !DEVICE_ID.test(deviceId)) {
+            return new Response('Missing or invalid device_id', { status: 400 });
         }
 
         const pair = new WebSocketPair();
         const [client, server] = Object.values(pair);
         const id = socketId();
 
-        // 免登录：web 客户端带有效 authToken 则直接放行
+        if (kind === 'desktop') {
+            // 同一台设备重连：旧连接还挂着就先关掉，避免一台设备两条线。
+            for (const old of this.ctx.getWebSockets(`desktop:${deviceId}`)) {
+                try { old.close(4002, 'replaced'); } catch {}
+            }
+            this.ctx.acceptWebSocket(server, ['desktop', `desktop:${deviceId}`]);
+            server.serializeAttachment({ device: 'desktop', id, deviceId, authenticated: true });
+            try {
+                server.send(JSON.stringify({ type: 'connection.ready', to: 'desktop', data: { clientId: id, deviceId } }));
+            } catch {}
+            return new Response(null, { status: 101, webSocket: client });
+        }
+
+        // 网页：带有效免密令牌直接放行，否则等 auth.submit。
         const tokenParam = url.searchParams.get('authToken') || '';
-        const preAuthed = device === 'web' && this.isTokenValid(tokenParam);
-        const authenticated = device === 'desktop' || !this.requiresPassword || preAuthed;
-
-        this.ctx.acceptWebSocket(server, [device]);
-        server.serializeAttachment({ device, id, authenticated });
-
+        const authenticated = Boolean(this.env.ACCESS_PASSWORD) && this.isTokenValid(tokenParam);
+        this.ctx.acceptWebSocket(server, ['web']);
+        const att = { device: 'web', id, deviceId: '', authenticated };
+        server.serializeAttachment(att);
         try {
             server.send(JSON.stringify({
                 type: 'connection.ready',
-                to: device,
-                data: {
-                    clientId: id,
-                    authenticated,
-                    requiresPassword: this.requiresPassword,
-                },
+                to: 'web',
+                data: { clientId: id, authenticated, passwordSet: Boolean(this.env.ACCESS_PASSWORD) },
             }));
         } catch {}
-
-        this.broadcastDeviceStatus();
-        this.broadcastAuthState(server);
-        if (device === 'web' && authenticated) this.flushInterrupted();
-
+        if (!this.env.ACCESS_PASSWORD) {
+            this.sendAuthState(server, { error: '服务端还没有设置访问密码：请管理员先执行 wrangler secret put ACCESS_PASSWORD', closed: true });
+        } else if (authenticated) {
+            this.sendAuthState(server);
+            this.onWebAuthenticated(server, att);
+        } else {
+            this.sendAuthState(server);
+        }
         return new Response(null, { status: 101, webSocket: client });
     }
 
@@ -166,164 +251,107 @@ export class TerminalSessionManager extends DurableObject {
         const att = ws.deserializeAttachment() || {};
 
         if (msg.type === 'connection.ping') {
-            ws.send(JSON.stringify({
-                type: 'connection.pong',
-                to: att.device,
-                data: {},
-            }));
+            ws.send(JSON.stringify({ type: 'connection.pong', to: att.device, data: {} }));
             return;
         }
 
-        if (msg.type === 'tool.result' && att.device === 'desktop') {
-            this.bridge.settle(msg.data);
-            return;
-        }
-
-        if (msg.type === 'device.report' && att.device === 'desktop') {
-            const { id, name, platform, arch, host, username, workdir, browser } = msg.data || {};
-            if (id) {
-                upsertDevice(this.env, { id, name, platform, arch, host, username, workdir, browser })
-                    .catch((error) => console.error('登记设备失败：', error.message));
+        if (att.device === 'desktop') {
+            if (msg.type === 'tool.result') {
+                this.bridge.settle(msg.data);
+                return;
             }
+            if (msg.type === 'device.report') {
+                const { name, platform, arch, host, username, workdir, browser, description } = msg.data || {};
+                await upsertDevice(this.env, {
+                    id: att.deviceId, name, platform, arch, host, username, workdir, browser, description,
+                }).catch((error) => console.error('登记设备失败：', error.message));
+                this.broadcastDevices();
+                return;
+            }
+            // 其余都是发给网页的业务消息：带上设备 id，网页按设备过滤。
+            msg.meta = { ...(msg.meta || {}), clientId: att.id, device: 'desktop', deviceId: att.deviceId };
+            this.route(msg);
             return;
         }
 
+        // 网页
+        if (msg.type === 'auth.submit') {
+            await this.handleAuthSubmit(ws, att, msg.data);
+            return;
+        }
+        if (!att.authenticated) {
+            this.sendAuthState(ws, { error: '请先输入访问密码' });
+            return;
+        }
         if (msg.type === 'agent.request') {
             this.handleAgentRequest(ws, msg, att);
             return;
         }
-
-        if (att.device === 'desktop' && (
-            msg.type === 'auth.mode'
-            || msg.type === 'auth.grant'
-            || msg.type === 'auth.reject'
-            || msg.type === 'auth.close'
-        )) {
-            this.handleAuthControl(msg);
+        if (msg.type === 'devices.list') {
+            this.sendDevices(ws);
             return;
         }
-
-        if (att.device === 'web' && !att.authenticated
-            && msg.type !== 'auth.submit'
-            && msg.type !== 'auth.request_challenge'
-        ) {
-            this.broadcastAuthState(ws, '请先输入访问密码');
-            return;
-        }
-
-        msg.meta = {
-            ...(msg.meta || {}),
-            clientId: att.id,
-            device: att.device,
-        };
+        msg.meta = { ...(msg.meta || {}), clientId: att.id, device: 'web' };
         this.route(msg);
     }
 
     async webSocketClose(ws) {
         const att = ws.deserializeAttachment() || {};
-        if (att.device === 'desktop' && !this.ctx.getWebSockets('desktop').length) {
-            this.bridge.drain();
+        if (att.device === 'desktop' && att.deviceId
+            && !this.ctx.getWebSockets(`desktop:${att.deviceId}`).some((other) => other !== ws)) {
+            this.bridge.drain(att.deviceId);
         }
-        this.broadcastDeviceStatus();
+        if (att.device === 'desktop') this.broadcastDevices();
     }
 
-    async webSocketError() {
-        this.broadcastDeviceStatus();
+    async webSocketError(ws) {
+        const att = ws.deserializeAttachment() || {};
+        if (att.device === 'desktop') this.broadcastDevices();
     }
 
-    handleAuthControl(msg) {
-        if (msg.type === 'auth.mode') {
-            this.requiresPassword = Boolean(msg.data?.requiresPassword);
-            this.ctx.storage.put('requiresPassword', this.requiresPassword).catch(() => {});
-            // 密码换了（或第一次知道指纹）：之前发出的免密令牌全部作废，已登录的网页重新输密码。
-            const fingerprint = String(msg.data?.fingerprint || '');
-            const revoked = fingerprint !== this.authFingerprint;
-            if (revoked) {
-                this.authFingerprint = fingerprint;
-                this.ctx.storage.put('authFingerprint', fingerprint).catch(() => {});
-                this.clearAllAuthTokens();
-            }
-            for (const ws of this.ctx.getWebSockets('web')) {
-                const att = ws.deserializeAttachment() || {};
-                if (!this.requiresPassword) {
-                    ws.serializeAttachment({ ...att, authenticated: true });
-                } else if (revoked || !att.authenticated) {
-                    ws.serializeAttachment({ ...att, authenticated: false });
-                }
-                this.broadcastAuthState(ws);
-            }
-            return;
+    /* ───────────── 设备 ───────────── */
+
+    onlineDeviceIds() {
+        const ids = new Set();
+        for (const ws of this.ctx.getWebSockets('desktop')) {
+            const att = ws.deserializeAttachment() || {};
+            if (att.deviceId) ids.add(att.deviceId);
         }
+        return ids;
+    }
 
-        const clientId = msg.data?.clientId;
-        if (!clientId) return;
-        const target = this.findWebSocket(clientId);
-        if (!target) return;
-        const att = target.deserializeAttachment() || {};
-
-        if (msg.type === 'auth.grant') {
-            target.serializeAttachment({ ...att, authenticated: true });
-
-            // 单设备独占：踢掉其它已认证的 web
-            for (const other of this.ctx.getWebSockets('web')) {
-                if (other === target) continue;
-                const oa = other.deserializeAttachment() || {};
-                if (!oa.authenticated) continue;
-                try {
-                    other.serializeAttachment({ ...oa, authenticated: false });
-                    other.send(JSON.stringify({
-                        type: 'auth.state',
-                        to: 'web',
-                        data: {
-                            authenticated: false,
-                            requiresPassword: this.requiresPassword,
-                            error: '已在另一台设备登录',
-                            kicked: true,
-                        },
-                    }));
-                } catch {}
-                try { other.close(4001, 'superseded'); } catch {}
+    // 已登记设备 + 在线状态。还没来得及 report 的在线设备也列出来，免得网页看不到。
+    async devicesSnapshot() {
+        const online = this.onlineDeviceIds();
+        let rows = [];
+        try {
+            rows = await listDevices(this.env);
+        } catch (error) {
+            console.error('读取设备列表失败：', error.message);
+        }
+        const devices = rows.map((row) => ({ ...row, browser: Boolean(row.browser), online: online.has(row.id) }));
+        for (const id of online) {
+            if (!devices.some((device) => device.id === id)) {
+                devices.push({ id, name: '', description: '', platform: '', arch: '', host: '', username: '', workdir: '', browser: false, last_seen: null, online: true });
             }
-
-            // 颁发免登录 token，30 天有效
-            const sessionToken = this.issueAuthToken();
-            try {
-                target.send(JSON.stringify({
-                    type: 'auth.state',
-                    to: 'web',
-                    data: {
-                        authenticated: true,
-                        requiresPassword: this.requiresPassword,
-                        error: '',
-                        sessionToken,
-                    },
-                }));
-            } catch {}
-            return;
         }
+        return devices;
+    }
 
-        if (msg.type === 'auth.reject') {
-            target.serializeAttachment({ ...att, authenticated: false });
-            this.broadcastAuthState(target, msg.data?.error || '密码错误');
-            return;
-        }
+    async sendDevices(ws) {
+        const devices = await this.devicesSnapshot();
+        try {
+            ws.send(JSON.stringify({ type: 'connection.devices', to: 'web', data: { devices } }));
+        } catch {}
+    }
 
-        if (msg.type === 'auth.close') {
-            // 被锁：清掉所有免登录 token，强制全员重新密码
-            this.clearAllAuthTokens();
-            try {
-                target.send(JSON.stringify({
-                    type: 'auth.state',
-                    to: 'web',
-                    data: {
-                        authenticated: false,
-                        requiresPassword: this.requiresPassword,
-                        error: msg.data?.error || '尝试过多，连接已关闭',
-                        closed: true,
-                    },
-                }));
-            } catch {}
-            try { target.close(4003, 'too many auth attempts'); } catch {}
+    async broadcastDevices() {
+        const devices = await this.devicesSnapshot();
+        const payload = JSON.stringify({ type: 'connection.devices', to: 'web', data: { devices } });
+        for (const ws of this.ctx.getWebSockets('web')) {
+            const att = ws.deserializeAttachment() || {};
+            if (!att.authenticated) continue;
+            try { ws.send(payload); } catch {}
         }
     }
 
@@ -339,8 +367,10 @@ export class TerminalSessionManager extends DurableObject {
                 return this.configCache;
             },
             invalidateConfig: () => { this.configCache = null; },
-            deviceOnline: () => this.ctx.getWebSockets('desktop').length > 0,
-            sendToDevice: (message) => this.sendToDevice(message),
+            onlineDevices: () => this.onlineDeviceIds(),
+            devices: () => this.devicesSnapshot(),
+            broadcastDevices: () => this.broadcastDevices(),
+            sendToDevice: (deviceId, message) => this.sendToDevice(deviceId, message),
             publish: (sessionId, event) => this.publishEvent(sessionId, event),
             waitUntil: (promise) => this.ctx.waitUntil(promise),
             runningIds: () => new Set(this.runs.keys()),
@@ -360,15 +390,6 @@ export class TerminalSessionManager extends DurableObject {
                 ws.send(JSON.stringify({ type: 'agent.result', to: 'web', data: { reqId, ...payload } }));
             } catch {}
         };
-        if (att.device === 'web' && !att.authenticated) {
-            this.broadcastAuthState(ws, '请先输入访问密码');
-            reply({ ok: false, error: '请先输入访问密码' });
-            return;
-        }
-        if (att.device === 'web' && (!this.sessionName || this.sessionName !== await activeSession(this.env))) {
-            reply({ ok: false, error: '这个链接已失效：电脑端已换到新的会话，请打开电脑端控制台打印的新地址' });
-            return;
-        }
         try {
             const result = await callOp(this.agentContext(), data.op, data.args || {});
             reply({ ok: true, data: result });
@@ -391,11 +412,12 @@ export class TerminalSessionManager extends DurableObject {
         }
     }
 
-    sendToDevice(message) {
-        const targets = this.ctx.getWebSockets('desktop');
+    sendToDevice(deviceId, message) {
+        if (!deviceId) return false;
+        const targets = this.ctx.getWebSockets(`desktop:${deviceId}`);
         if (!targets.length) return false;
         try {
-            targets[0].send(JSON.stringify(message));
+            targets[targets.length - 1].send(JSON.stringify(message));
             return true;
         } catch {
             return false;
@@ -431,62 +453,29 @@ export class TerminalSessionManager extends DurableObject {
         return null;
     }
 
+    // to: 'web' 全部已登录网页；'web:<clientId>' 某个网页；'device:<id>' 某台电脑；'all' 所有人。
     route(msg) {
         const target = msg.to;
         let targets = [];
 
         if (target === 'all') {
             targets = this.ctx.getWebSockets();
-        } else if (target === 'desktop' || target === 'web') {
-            targets = this.ctx.getWebSockets(target);
-            if (target === 'web') {
-                targets = targets.filter((ws) => {
-                    const att = ws.deserializeAttachment() || {};
-                    return Boolean(att.authenticated);
-                });
-            }
+        } else if (target === 'web') {
+            targets = this.ctx.getWebSockets('web').filter((ws) => {
+                const att = ws.deserializeAttachment() || {};
+                return Boolean(att.authenticated);
+            });
         } else if (typeof target === 'string' && target.startsWith('web:')) {
             const ws = this.findWebSocket(target.slice(4));
             if (ws) targets = [ws];
+        } else if (typeof target === 'string' && target.startsWith('device:')) {
+            // 只有网页会往设备发消息；设备之间不互发。
+            if (msg.meta?.device === 'web') targets = this.ctx.getWebSockets(`desktop:${target.slice(7)}`);
         }
 
         if (!targets.length) return;
         const payload = JSON.stringify(msg);
         for (const ws of targets) {
-            try {
-                ws.send(payload);
-            } catch {}
-        }
-    }
-
-    broadcastAuthState(ws, error = '') {
-        const att = ws.deserializeAttachment() || {};
-        if (att.device !== 'web') return;
-        try {
-            ws.send(JSON.stringify({
-                type: 'auth.state',
-                to: 'web',
-                data: {
-                    authenticated: Boolean(att.authenticated),
-                    requiresPassword: this.requiresPassword,
-                    error,
-                },
-            }));
-        } catch {}
-    }
-
-    broadcastDeviceStatus() {
-        const payload = JSON.stringify({
-            type: 'connection.devices',
-            to: 'all',
-            data: {
-                devices: {
-                    desktop: this.ctx.getWebSockets('desktop').length > 0 ? 'connected' : 'disconnected',
-                    web: this.ctx.getWebSockets('web').length > 0 ? 'connected' : 'disconnected',
-                },
-            },
-        });
-        for (const ws of this.ctx.getWebSockets()) {
             try {
                 ws.send(payload);
             } catch {}
@@ -499,14 +488,10 @@ export default {
         const url = new URL(request.url);
 
         if (url.pathname === '/ws') {
-            const sessionId = url.searchParams.get('session');
-            if (!sessionId || sessionId === 'default') {
-                return new Response('Missing session', { status: 400 });
-            }
             if (url.searchParams.get('device') === 'desktop' && !(await deviceTokenValid(request, env))) {
                 return new Response('Invalid device token', { status: 401 });
             }
-            const id = env.TERMINAL_SESSION_MANAGER.idFromName(sessionId);
+            const id = env.TERMINAL_SESSION_MANAGER.idFromName(HUB);
             const stub = env.TERMINAL_SESSION_MANAGER.get(id);
             return stub.fetch(request);
         }

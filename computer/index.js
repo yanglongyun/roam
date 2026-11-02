@@ -1,7 +1,6 @@
 import ws from './ws.js';
 import router from './router.js';
 
-import guard from './services/guard/index.js';
 import terminal from './services/terminal/index.js';
 import agent from './services/agent/index.js';
 
@@ -11,24 +10,13 @@ async function boot() {
     // 助理：只留工具执行和浏览器管道，对话与数据都在云端
     agent.start();
 
-    guard.bindOnGrant((clientId) => {
-        terminal.sendSnapshotTo(clientId);
-    });
-
-    router.bindOnDevicesChanged((devices) => {
-        if (devices?.web !== 'connected') return;
-        console.log('🌐 网页端已接入当前会话');
-        terminal.sendSnapshotAll();
-        guard.sendAuthMode();
-    });
-
     await terminal.ensureDefault();
 
     ws.init({
         onOpen: () => {
-            guard.sendAuthMode();
-            terminal.sendSnapshotAll();
+            // 访问密码由云端校验；这里只要把自己是谁、有哪些终端告诉云端。
             agent.report();
+            terminal.sendSnapshotAll();
         },
         onMessage: (msg) => router.dispatch(msg),
     });

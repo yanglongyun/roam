@@ -8,18 +8,14 @@ const route = useRoute();
 
 const show = computed(() => {
     if (route.name === 'guard') return false;  // guard 自己显示状态
-    if (ws.invalid || ws.superseded) return true;
     if (ws.connectionLost) return true;
     return !ws.showActions && !ws.isReconnecting;
 });
 
 const status = computed(() => {
-    if (ws.invalid)            return { id: 'invalid',    label: '无效的访问链接，请用客户端刚打印的最新链接' };
-    if (ws.superseded)         return { id: 'superseded', label: '已在另一台设备登录，刷新可重新登录' };
     if (ws.state === 'offline')return { id: 'offline',    label: '连接已断开，重连中…' };
-    if (ws.state === 'pending')return { id: 'pending',    label: '等待客户端上线…' };
-    if (!ws.authenticated && ws.requiresPassword)
-                               return { id: 'pending',    label: '等待认证…' };
+    if (ws.state === 'pending')return { id: 'pending',    label: '正在连接云端…' };
+    if (!ws.authenticated)     return { id: 'pending',    label: '等待登录…' };
     return                           { id: 'pending',    label: '连接中…' };
 });
 </script>
@@ -51,8 +47,6 @@ const status = computed(() => {
 }
 .gate-dot[data-state="pending"]    { background: var(--color-accent); animation: gate-pulse 1.4s ease-in-out infinite; }
 .gate-dot[data-state="offline"]    { background: var(--color-bad); }
-.gate-dot[data-state="invalid"]    { background: var(--color-faint); }
-.gate-dot[data-state="superseded"] { background: var(--color-faint); }
 
 @keyframes gate-pulse {
     0%, 100% { opacity: 1; }

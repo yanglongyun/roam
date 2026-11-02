@@ -44,6 +44,7 @@ function loadDotEnvFile() {
     return values;
 }
 
+// 环境变量 > .env > config.js
 function resolveValue(key, sources) {
     if (Object.prototype.hasOwnProperty.call(process.env, key)) {
         return process.env[key];
@@ -57,18 +58,21 @@ function resolveValue(key, sources) {
     return undefined;
 }
 
-const configValues = await loadConfigFile();
-const dotEnvValues = loadDotEnvFile();
-
-const CLOUDFLARE_WORKER_URL = String(resolveValue('CLOUDFLARE_WORKER_URL', [dotEnvValues, configValues]) || '').trim();
-if (!CLOUDFLARE_WORKER_URL) {
-    console.error('缺少 CLOUDFLARE_WORKER_URL 配置');
+function missing(key, hint = '') {
+    console.error(`缺少 ${key} 配置${hint ? `（${hint}）` : ''}`);
     console.error('请在以下任一位置设置:');
     console.error(`  - ${configPath}`);
     console.error(`  - ${envPath}`);
-    console.error('  - 环境变量 CLOUDFLARE_WORKER_URL');
+    console.error(`  - 环境变量 ${key}`);
     process.exit(1);
 }
+
+const configValues = await loadConfigFile();
+const dotEnvValues = loadDotEnvFile();
+const sources = [dotEnvValues, configValues];
+
+const CLOUDFLARE_WORKER_URL = String(resolveValue('CLOUDFLARE_WORKER_URL', sources) || '').trim();
+if (!CLOUDFLARE_WORKER_URL) missing('CLOUDFLARE_WORKER_URL');
 
 let parsed;
 try {
@@ -80,32 +84,25 @@ try {
 
 const SERVER_URL = `${parsed.protocol === 'https:' ? 'wss:' : 'ws:'}//${parsed.host}`;
 const WEB_URL = parsed.origin;
-const SESSION_ID = String(resolveValue('SESSION_ID', [dotEnvValues, configValues]) || '').trim();
-if (SESSION_ID === 'default') {
-    console.error('SESSION_ID 不能设置为 default');
-    process.exit(1);
-}
-const SESSION_PASSWORD = String(resolveValue('SESSION_PASSWORD', [dotEnvValues, configValues]) || '').trim();
-const DEBUG = String(resolveValue('DEBUG', [dotEnvValues, configValues]) || '0').trim() === '1';
 
-// 和 Worker 的 DEVICE_TOKEN secret 一致，Worker 凭它认出这台电脑。
-const DEVICE_TOKEN = String(resolveValue('DEVICE_TOKEN', [dotEnvValues, configValues]) || '').trim();
-if (!DEVICE_TOKEN) {
-    console.error('缺少 DEVICE_TOKEN 配置（要和 Worker 的 DEVICE_TOKEN secret 一致）');
-    console.error('请在以下任一位置设置:');
-    console.error(`  - ${configPath}`);
-    console.error(`  - ${envPath}`);
-    console.error('  - 环境变量 DEVICE_TOKEN');
-    process.exit(1);
-}
+// 和 Worker 的 DEVICE_TOKEN secret 一致，Worker 凭它认出这是自己的电脑端。
+const DEVICE_TOKEN = String(resolveValue('DEVICE_TOKEN', sources) || '').trim();
+if (!DEVICE_TOKEN) missing('DEVICE_TOKEN', '要和 Worker 的 DEVICE_TOKEN secret 一致');
 
-export { CLOUDFLARE_WORKER_URL, SERVER_URL, WEB_URL, SESSION_ID, SESSION_PASSWORD, DEVICE_TOKEN, DEBUG };
+// 这台设备在网页和助理眼里的名字与描述；云端一旦改过就以云端为准，这里只是初始值。
+const DEVICE_NAME = String(resolveValue('DEVICE_NAME', sources) || '').trim();
+const DEVICE_DESCRIPTION = String(resolveValue('DEVICE_DESCRIPTION', sources) || '').trim();
+
+// 调试日志只认环境变量：DEBUG=1 node index.js
+const DEBUG = String(process.env.DEBUG || '').trim() === '1';
+
+export { CLOUDFLARE_WORKER_URL, SERVER_URL, WEB_URL, DEVICE_TOKEN, DEVICE_NAME, DEVICE_DESCRIPTION, DEBUG };
 export default {
     CLOUDFLARE_WORKER_URL,
     SERVER_URL,
     WEB_URL,
-    SESSION_ID,
-    SESSION_PASSWORD,
     DEVICE_TOKEN,
+    DEVICE_NAME,
+    DEVICE_DESCRIPTION,
     DEBUG,
 };

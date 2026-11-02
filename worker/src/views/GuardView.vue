@@ -8,19 +8,20 @@ const ws = useWsStore();
 const password = ref('');
 
 const status = computed(() => {
-    if (ws.authClosed) return { id: 'locked',     label: '认证已锁定' };
-    if (ws.superseded) return { id: 'superseded', label: '已在另一台设备登录' };
-    if (ws.invalid)    return { id: 'invalid',    label: '无效的访问链接' };
+    if (!ws.passwordSet)  return { id: 'locked',    label: '服务端未设置访问密码' };
+    if (ws.authClosed)    return { id: 'locked',    label: '认证已锁定' };
     if (ws.state === 'connected')
-                       return { id: 'connected',  label: '远程客户端已连接' };
-    return                    { id: 'pending',    label: '客户端未连接' };
+                          return { id: 'connected', label: '已连上云端' };
+    if (ws.state === 'offline')
+                          return { id: 'offline',   label: '连接已断开，重连中' };
+    return                       { id: 'pending',   label: '正在连接云端' };
 });
 
 const canSubmit = computed(() =>
     !ws.authClosed
-    && !ws.superseded
-    && !ws.invalid
+    && ws.passwordSet
     && ws.state === 'connected'
+    && password.value.length > 0
 );
 
 function onSubmit() {
@@ -28,8 +29,11 @@ function onSubmit() {
     ws.submitPassword(password.value);
 }
 
+// 登录后回到原来想去的页面（刷新深链接时带过来的 redirect），没有就进助理。
 function enterApp() {
-    router.replace({ path: '/chat', query: router.currentRoute.value.query });
+    const redirect = String(router.currentRoute.value.query.redirect || '');
+    const target = redirect.length > 1 && redirect.startsWith('/') && !redirect.startsWith('/guard') ? redirect : '/chat';
+    router.replace(target);
 }
 
 onMounted(() => {
@@ -58,7 +62,7 @@ watch(() => ws.authenticated, (v) => { if (v) enterApp(); });
                     autocomplete="current-password"
                     placeholder="访问密码"
                     class="h-11 w-full rounded-[10px] border border-line bg-bg-elev px-3 text-[13px] text-ink outline-none transition-colors focus:border-accent"
-                    :disabled="ws.authClosed || ws.superseded"
+                    :disabled="ws.authClosed || !ws.passwordSet"
                 />
 
                 <div v-if="ws.authError"
@@ -69,9 +73,13 @@ watch(() => ws.authenticated, (v) => { if (v) enterApp(); });
                 <button type="submit"
                     class="h-11 w-full rounded-[10px] bg-accent text-bg text-[13px] font-semibold transition-opacity hover:opacity-90 disabled:opacity-30 disabled:cursor-not-allowed"
                     :disabled="!canSubmit">
-                    进入会话
+                    进入
                 </button>
             </form>
+
+            <p class="mt-6 text-center text-[11px] leading-relaxed text-faint">
+                密码由云端校验，电脑端离线也能登录查看历史对话。登录后 30 天内免密。
+            </p>
         </div>
     </main>
 </template>
@@ -88,8 +96,6 @@ watch(() => ws.authenticated, (v) => { if (v) enterApp(); });
 .status-dot[data-state="pending"]    { background: var(--color-accent); animation: dot-pulse 1.4s ease-in-out infinite; }
 .status-dot[data-state="offline"]    { background: var(--color-bad); }
 .status-dot[data-state="locked"]     { background: var(--color-bad); }
-.status-dot[data-state="superseded"] { background: var(--color-faint); }
-.status-dot[data-state="invalid"]    { background: var(--color-faint); }
 
 @keyframes dot-pulse {
     0%, 100% { opacity: 1; }

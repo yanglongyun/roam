@@ -1,5 +1,5 @@
-// 云端业务层：会话、消息、配置、图片。对应电脑端 ops/，全部改成 async。
-// ctx 由 DO 提供：env / 配置缓存 / runs（内存）+ 广播与设备通道。
+// 云端业务层：会话、消息、配置、设备、图片。
+// ctx 由 DO 提供：env / 配置缓存 / runs（内存）+ 设备快照与设备通道。
 import { renderPrompt, requireModel } from './config.js';
 import { run } from './loop.js';
 import { createRunner } from './runner.js';
@@ -11,30 +11,56 @@ import { toBase64 } from './crypto.js';
 
 const { fail, pick } = store;
 
+function publicDevice(device) {
+  return {
+    id: device.id,
+    name: device.name || '',
+    description: device.description || '',
+    platform: device.platform || '',
+    arch: device.arch || '',
+    host: device.host || '',
+    username: device.username || '',
+    workdir: device.workdir || '',
+    browser: Boolean(device.browser),
+    online: Boolean(device.online),
+    last_seen: device.last_seen ?? null,
+  };
+}
+
 /* ───────────────────────── 状态 ───────────────────────── */
 
 export async function status(ctx) {
   const config = await ctx.config();
-  const device = await store.activeDevice(ctx.env);
+  const devices = (await ctx.devices()).map(publicDevice);
   return {
     model: config.model,
     model_ready: Boolean(config.responsesUrl && config.apiKey && config.model),
-    workdir: config.workdir || device?.workdir || '',
-    device_online: ctx.deviceOnline(),
-    browser_connected: Boolean(device?.browser),
+    workdir: config.workdir || '',
+    device_online: devices.some((device) => device.online),
     images: imagesEnabled(ctx.env),
-    device: device
-      ? {
-          id: device.id,
-          name: device.name,
-          platform: device.platform,
-          host: device.host,
-          workdir: device.workdir,
-          browser: Boolean(device.browser),
-          last_seen: device.last_seen,
-        }
-      : null,
+    devices,
   };
+}
+
+/* ───────────────────────── 设备 ───────────────────────── */
+
+async function devicesList(ctx, args) {
+  pick(args, []);
+  return { devices: (await ctx.devices()).map(publicDevice) };
+}
+
+async function devicesPatch(ctx, args) {
+  const updated = await store.patchDevice(ctx.env, args);
+  ctx.waitUntil(ctx.broadcastDevices());
+  return publicDevice({ ...updated, online: ctx.onlineDevices().has(updated.id) });
+}
+
+async function devicesRemove(ctx, args) {
+  const { id } = pick(args, ['id']);
+  if (ctx.onlineDevices().has(id)) fail(409, '设备在线，不能删除登记');
+  const result = await store.removeDevice(ctx.env, { id });
+  ctx.waitUntil(ctx.broadcastDevices());
+  return result;
 }
 
 /* ───────────────────────── 会话 ───────────────────────── */
@@ -43,9 +69,20 @@ async function sessionsList(ctx, args) {
   return store.listSessions(ctx.env, args, ctx.runningIds());
 }
 
+// 新建会话时选默认设备：没指定就取在线的第一台，再没有就取登记过的第一台。
 async function sessionsCreate(ctx, args) {
-  pick(args, []);
-  return store.createSession(ctx.env);
+  const { device_id: requested } = pick(args, ['device_id']);
+  let deviceId = '';
+  if (requested !== undefined && requested !== '') {
+    if (typeof requested !== 'string') fail(400, 'device_id 必须是字符串');
+    await store.requireDevice(ctx.env, requested);
+    deviceId = requested;
+  } else {
+    const devices = await ctx.devices();
+    const chosen = devices.find((device) => device.online) || devices[0];
+    deviceId = chosen?.id || '';
+  }
+  return store.createSession(ctx.env, deviceId);
 }
 
 async function sessionsOpen(ctx, args) {
@@ -70,7 +107,7 @@ async function sessionsRemove(ctx, args) {
 /* ───────────────────────── 配置 ───────────────────────── */
 
 async function configGet(ctx) {
-  return store.publicConfig(ctx.env, await ctx.config());
+  return store.publicConfig(await ctx.config());
 }
 
 export async function configPut(ctx, args) {
@@ -139,7 +176,7 @@ async function messagesSend(ctx, args) {
   } catch (error) {
     fail(400, error.message);
   }
-  await store.requireSession(ctx.env, id);
+  const session = await store.requireSession(ctx.env, id);
   // 检查和登记之间没有 await 以外的空隙：DO 单线程，同一会话不会同时开始两轮。
   if (ctx.runs.has(id)) {
     fail(409, '会话正在回复');
@@ -164,7 +201,7 @@ async function messagesSend(ctx, args) {
     }
     const saved = await store.saveMessage(ctx.env, id, user);
     ctx.publish(id, { type: 'message', item: user, ...saved });
-    state.done = reply(ctx, id, state).finally(() => {
+    state.done = reply(ctx, id, state, session.device_id || '').finally(() => {
       ctx.runs.delete(id);
       ctx.markIdle(id);
     });
@@ -188,10 +225,11 @@ async function messagesStop(ctx, args) {
   return { stopped: Boolean(current) };
 }
 
-async function reply(ctx, id, state) {
+async function reply(ctx, id, state, sessionDeviceId) {
   const env = ctx.env;
   const push = (event) => ctx.publish(id, event);
-  const device = await store.activeDevice(env);
+  const devices = (await ctx.devices()).map(publicDevice);
+  const scope = { devices, sessionDeviceId };
   const config = {
     ...(await ctx.config()),
     images_dir: 'r2',
@@ -199,7 +237,7 @@ async function reply(ctx, id, state) {
     session_id: id,
     session_title: await store.sessionTitle(env, id),
   };
-  const online = ctx.deviceOnline();
+  const anyOnline = devices.some((device) => device.online);
 
   // 超时：AbortController + DO alarm（见 DO 的 alarm 处理）。
   const timer = setTimeout(
@@ -232,20 +270,26 @@ async function reply(ctx, id, state) {
       instructions: renderPrompt(
         config.system.replace(
           '{{device_status}}',
-          describeAvailability({ deviceOnline: online, device, images: imagesEnabled(env) }),
+          describeAvailability({ devices, sessionDeviceId, images: imagesEnabled(env) }),
         ),
-        device,
+        scope,
       ),
       messages,
       model: config.model,
       config,
-      device,
-      tools: listTools({ deviceOnline: online }),
+      scope,
+      tools: listTools({ anyOnline }),
       runTool: createRunner({
         env,
         bridge: ctx.bridge,
         sendToDevice: ctx.sendToDevice,
         sessionId: id,
+        sessionDeviceId,
+        // 登记信息用回复开始时的快照，在线状态每次工具调用时现查。
+        devices: () => {
+          const online = ctx.onlineDevices();
+          return devices.map((device) => ({ ...device, online: online.has(device.id) }));
+        },
       }),
       usage,
       signal: state.controller.signal,
@@ -374,18 +418,13 @@ async function imagesGet(ctx, args) {
   return { type: image.type, data: toBase64(image.bytes) };
 }
 
-/* ───────────────────────── 设备登记 ───────────────────────── */
-
-async function deviceReport(ctx, args) {
-  const data = pick(args, ['id', 'name', 'platform', 'arch', 'host', 'username', 'workdir', 'browser']);
-  await store.upsertDevice(ctx.env, data);
-  return { ok: true };
-}
-
 /* ───────────────────────── 路由 ───────────────────────── */
 
 const OPS = {
   'status.get': status,
+  'devices.list': devicesList,
+  'devices.patch': devicesPatch,
+  'devices.remove': devicesRemove,
   'sessions.list': sessionsList,
   'sessions.create': sessionsCreate,
   'sessions.open': sessionsOpen,
@@ -397,7 +436,6 @@ const OPS = {
   'messages.stop': messagesStop,
   'config.get': configGet,
   'config.put': configPut,
-  'device.report': deviceReport,
   'images.upload': imagesUpload,
   'images.get': imagesGet,
   // 电脑端叫 sessions.remove / run.stop，前端用的是这两个名字。

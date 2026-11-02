@@ -46,7 +46,7 @@ async function handle(message) {
     }
 }
 
-// 暴露给 index.js / guard grant 使用的快照接口
+// 快照接口：网页登录成功（web.joined）时单独发给它，重连时发给全部网页
 function sendSnapshotTo(clientId) {
     sessions.broadcastList(`web:${clientId}`);
     const active = sessions.get();

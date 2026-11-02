@@ -66,7 +66,7 @@ export async function saveConfig(env, config) {
 }
 
 // 设置页展示用：不回显密钥，只给前后几位。
-export async function publicConfig(env, config) {
+export function publicConfig(config) {
   let keyHint = '';
   if (config.apiKey) {
     keyHint =
@@ -74,7 +74,6 @@ export async function publicConfig(env, config) {
         ? '***'
         : config.apiKey.slice(0, 6) + '...' + config.apiKey.slice(-4);
   }
-  const device = await activeDevice(env);
   return {
     responsesUrl: config.responsesUrl,
     key_set: Boolean(config.apiKey),
@@ -86,44 +85,26 @@ export async function publicConfig(env, config) {
     keep: config.keep,
     compact_system: config.compact_system,
     compact_prefix: config.compact_prefix,
-    workdir: config.workdir || device?.workdir || '',
+    workdir: config.workdir,
     run_timeout: config.run_timeout,
     timeout: config.timeout,
     max_output: config.max_output,
-    device: device
-      ? { id: device.id, name: device.name, host: device.host, online: true, browser: Boolean(device.browser) }
-      : null,
   };
-}
-
-/* ───────────────────────── 当前 session ───────────────────────── */
-
-// 电脑端每次接入都把自己所在的 session 记成当前 session。
-export async function setActiveSession(env, session) {
-  await run(
-    env,
-    `INSERT INTO active (id, session, updated_at) VALUES (1, ?, ?)
-     ON CONFLICT(id) DO UPDATE SET session = excluded.session, updated_at = excluded.updated_at`,
-    [session, Date.now()],
-  );
-}
-
-export async function activeSession(env) {
-  const row = await one(env, 'SELECT session FROM active WHERE id = 1');
-  return row?.session || '';
 }
 
 /* ───────────────────────── 设备 ───────────────────────── */
 
-// 设备每次连上来都刷新一次环境快照，云端拼提示词、判在线都用这张表。
+// 设备每次连上来都刷新一次环境快照。名字和描述以云端为准：只在云端为空时采用上报值。
 export async function upsertDevice(env, device) {
   const now = Date.now();
+  if (!device.id) fail(400, '设备缺少 id');
   await run(
     env,
-    `INSERT INTO devices (id, name, platform, arch, host, username, workdir, browser, last_seen, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO devices (id, name, description, platform, arch, host, username, workdir, browser, last_seen, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
-       name = excluded.name,
+       name = COALESCE(NULLIF(devices.name, ''), excluded.name),
+       description = COALESCE(NULLIF(devices.description, ''), excluded.description),
        platform = excluded.platform,
        arch = excluded.arch,
        host = excluded.host,
@@ -132,8 +113,9 @@ export async function upsertDevice(env, device) {
        browser = excluded.browser,
        last_seen = excluded.last_seen`,
     [
-      device.id || 'desktop',
-      device.name || '',
+      device.id,
+      String(device.name || '').trim().slice(0, 80),
+      String(device.description || '').trim().slice(0, 500),
       device.platform || '',
       device.arch || '',
       device.host || '',
@@ -146,12 +128,47 @@ export async function upsertDevice(env, device) {
   );
 }
 
-export async function touchDevice(env, id = 'desktop') {
-  await run(env, 'UPDATE devices SET last_seen = ? WHERE id = ?', [Date.now(), id]);
+export async function listDevices(env) {
+  return all(env, 'SELECT * FROM devices ORDER BY created_at, id');
 }
 
-export async function activeDevice(env, id = 'desktop') {
-  return one(env, 'SELECT * FROM devices WHERE id = ?', [id]);
+export async function getDevice(env, id) {
+  return typeof id === 'string' && id ? one(env, 'SELECT * FROM devices WHERE id = ?', [id]) : null;
+}
+
+export async function requireDevice(env, id) {
+  const row = await getDevice(env, id);
+  if (!row) fail(404, `设备不存在：${id}`);
+  return row;
+}
+
+// 网页设置里改名字和描述。
+export async function patchDevice(env, args) {
+  const data = pick(args, ['id', 'name', 'description']);
+  await requireDevice(env, data.id);
+  if (data.name === undefined && data.description === undefined) fail(400, '缺少要修改的字段');
+  const statements = [];
+  if (data.name !== undefined) {
+    if (typeof data.name !== 'string' || [...data.name.trim()].length > 80) fail(400, '名字最多 80 字符');
+    statements.push(statement(env, 'UPDATE devices SET name = ? WHERE id = ?', [data.name.trim(), data.id]));
+  }
+  if (data.description !== undefined) {
+    if (typeof data.description !== 'string' || [...data.description.trim()].length > 500) fail(400, '描述最多 500 字符');
+    statements.push(statement(env, 'UPDATE devices SET description = ? WHERE id = ?', [data.description.trim(), data.id]));
+  }
+  await batch(env, statements);
+  return one(env, 'SELECT * FROM devices WHERE id = ?', [data.id]);
+}
+
+// 删除登记（只允许离线设备）；绑在它上面的会话失去默认设备。
+export async function removeDevice(env, args) {
+  const { id } = pick(args, ['id']);
+  await requireDevice(env, id);
+  await batch(env, [
+    statement(env, "UPDATE sessions SET device_id = '' WHERE device_id = ?", [id]),
+    statement(env, 'DELETE FROM devices WHERE id = ?', [id]),
+  ]);
+  return { deleted: id };
 }
 
 /* ───────────────────────── 会话 ───────────────────────── */
@@ -214,18 +231,18 @@ export async function listSessions(env, args, running = new Set()) {
   return { sessions, has_more: rows.length > PAGE };
 }
 
-export async function createSession(env, deviceId = 'desktop') {
+export async function createSession(env, deviceId = '') {
   const id = crypto.randomUUID();
   const now = Date.now();
   await run(
     env,
     'INSERT INTO sessions (id, title, device_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
-    [id, '', deviceId, now, now],
+    [id, '', deviceId || '', now, now],
   );
   return {
     id,
     title: '',
-    device_id: deviceId,
+    device_id: deviceId || '',
     created_at: now,
     updated_at: now,
     pin: null,
@@ -243,7 +260,7 @@ export async function requireSession(env, id) {
 
 export async function openSession(env, args, runState = null) {
   const { id } = pick(args, ['id']);
-  await requireSession(env, id);
+  const session = await requireSession(env, id);
   const rows = await all(
     env,
     'SELECT * FROM messages WHERE session_id = ? ORDER BY id DESC LIMIT 61',
@@ -263,6 +280,7 @@ export async function openSession(env, args, runState = null) {
     [id],
   );
   return {
+    device_id: session.device_id || '',
     messages,
     has_more: rows.length > 60,
     compactions,
@@ -272,9 +290,9 @@ export async function openSession(env, args, runState = null) {
 }
 
 export async function patchSession(env, args, running = new Set()) {
-  const data = pick(args, ['id', 'title', 'pinned']);
+  const data = pick(args, ['id', 'title', 'pinned', 'device_id']);
   const id = data.id;
-  if (data.title === undefined && data.pinned === undefined) {
+  if (data.title === undefined && data.pinned === undefined && data.device_id === undefined) {
     fail(400, '缺少要修改的字段');
   }
   if (data.title !== undefined && (typeof data.title !== 'string' || [...data.title.trim()].length > 120)) {
@@ -283,10 +301,17 @@ export async function patchSession(env, args, running = new Set()) {
   if (data.pinned !== undefined && typeof data.pinned !== 'boolean') {
     fail(400, 'pinned 必须是布尔值');
   }
+  if (data.device_id !== undefined) {
+    if (typeof data.device_id !== 'string') fail(400, 'device_id 必须是字符串');
+    if (data.device_id) await requireDevice(env, data.device_id);
+  }
   const session = await requireSession(env, id);
   const statements = [];
   if (data.title !== undefined) {
     statements.push(statement(env, 'UPDATE sessions SET title = ? WHERE id = ?', [data.title.trim(), id]));
+  }
+  if (data.device_id !== undefined) {
+    statements.push(statement(env, 'UPDATE sessions SET device_id = ? WHERE id = ?', [data.device_id, id]));
   }
   if (data.pinned === true && session.pin === null) {
     const row = await one(env, 'SELECT MIN(pin) AS pin FROM sessions');

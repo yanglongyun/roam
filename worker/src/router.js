@@ -2,7 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router';
 import { useWsStore } from '@/stores/ws';
 
 const routes = [
-    { path: '/', redirect: (to) => ({ path: '/guard', query: to.query }) },
+    { path: '/', redirect: '/guard' },
     {
         path: '/guard',
         name: 'guard',
@@ -39,7 +39,7 @@ const routes = [
         name: 'settings',
         component: () => import('./views/SettingsView.vue'),
     },
-    { path: '/:pathMatch(.*)*', redirect: (to) => ({ path: '/guard', query: to.query }) },
+    { path: '/:pathMatch(.*)*', redirect: '/guard' },
 ];
 
 export const router = createRouter({
@@ -47,18 +47,15 @@ export const router = createRouter({
     routes,
 });
 
-router.beforeEach((to, from) => {
-    const patched = { ...to };
-    if (!to.query.session && from.query.session) {
-        patched.query = { ...to.query, session: from.query.session };
-        return patched;
-    }
-
+router.beforeEach((to) => {
     if (to.meta?.public) return true;
 
     const ws = useWsStore();
-    if (ws.requiresPassword && !ws.authenticated && !ws.isReconnecting) {
-        return { path: '/guard', query: to.query };
+    // 刚打开页面还没连上云端：先放行（ConnectionGate 盖着），连上后由 App.vue 决定去不去守卫页，
+    // 这样刷新 /terminal、/status 这类深链接不会被打回 /chat。
+    if (ws.state === 'pending' && !ws.authenticated) return true;
+    if (!ws.authenticated && !ws.isReconnecting) {
+        return { path: '/guard', query: { redirect: to.fullPath } };
     }
     return true;
 });

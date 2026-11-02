@@ -18,6 +18,48 @@ const saving = ref(false);
 const saved = ref(false);
 const loadError = ref('');
 
+/* ── 设备：名字和描述存云端，助理的系统提示里会列出来 ── */
+const deviceForms = reactive({});   // id -> { name, description }
+const deviceSaving = ref('');
+
+function deviceForm(device) {
+    if (!deviceForms[device.id]) {
+        deviceForms[device.id] = { name: device.name || '', description: device.description || '' };
+    }
+    return deviceForms[device.id];
+}
+function deviceDirty(device) {
+    const f = deviceForm(device);
+    return f.name !== (device.name || '') || f.description !== (device.description || '');
+}
+async function saveDevice(device) {
+    const f = deviceForm(device);
+    deviceSaving.value = device.id;
+    try {
+        await agent.patchDevice({ id: device.id, name: f.name.trim(), description: f.description.trim() });
+        toast.show('设备已保存', 1800);
+    } catch (error) {
+        toast.show(error.message || '保存失败', 2400);
+    } finally {
+        deviceSaving.value = '';
+    }
+}
+async function removeDevice(device) {
+    if (!window.confirm(`删除「${ws.deviceLabel(device)}」的登记？绑在它上面的会话会失去默认设备。`)) return;
+    try {
+        await agent.removeDevice(device.id);
+        delete deviceForms[device.id];
+        toast.show('已删除登记', 1800);
+    } catch (error) {
+        toast.show(error.message || '删除失败', 2400);
+    }
+}
+function lastSeen(device) {
+    if (device.online) return '在线';
+    if (!device.last_seen) return '从未上线';
+    return `最后在线 ${new Date(device.last_seen).toLocaleString()}`;
+}
+
 function fill(value) {
     config.value = value;
     for (const key of TEXT_FIELDS) form[key] = value[key] ?? '';
@@ -118,7 +160,7 @@ watch(() => ws.showActions, (online) => { if (online) load(); }, { immediate: tr
                             <label class="block">
                                 <span class="field-k">系统提示词</span>
                                 <textarea class="field" v-model="form.system" rows="6" spellcheck="false"></textarea>
-                                <span class="field-note" v-pre>支持变量 {{os}} {{arch}} {{host}} {{user}} {{workdir}} {{time}} {{device_status}}，环境信息来自电脑端上次连接时的登记。</span>
+                                <span class="field-note" v-pre>支持变量 {{devices}}（全部设备清单，含名字、描述、在线状态）、{{time}}、{{device_status}}；{{os}} {{arch}} {{host}} {{user}} {{workdir}} 取当前会话默认设备的信息。</span>
                             </label>
                         </div>
                     </section>
@@ -150,8 +192,8 @@ watch(() => ws.showActions, (online) => { if (online) load(); }, { immediate: tr
                         <h3 class="mb-3 text-xs font-semibold uppercase tracking-wider text-zinc-500">运行</h3>
                         <label class="block">
                             <span class="field-k">工作目录</span>
-                            <input class="field" v-model="form.workdir" placeholder="留空使用用户目录" spellcheck="false" autocapitalize="off" />
-                            <span class="field-note">工具里的相对路径以这里为准，必须是电脑上已存在的绝对路径。</span>
+                            <input class="field" v-model="form.workdir" placeholder="留空使用各设备的用户目录" spellcheck="false" autocapitalize="off" />
+                            <span class="field-note">工具里的相对路径以这里为准，对所有设备生效；留空则每台设备用自己的用户目录。</span>
                         </label>
                         <div class="mt-3 grid grid-cols-3 gap-3">
                             <label class="block">
@@ -181,38 +223,60 @@ watch(() => ws.showActions, (online) => { if (online) load(); }, { immediate: tr
                     </div>
 
                     <section class="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
-                        <h3 class="mb-3 text-xs font-semibold uppercase tracking-wider text-zinc-500">电脑端</h3>
-                        <div class="text-sm">
-                            <span class="text-zinc-500">状态：</span>
-                            <span :class="agent.status?.device_online ? 'text-emerald-400' : 'text-zinc-400'">
-                                {{ agent.status?.device_online ? '已连接' : '未连接，工具暂不可用' }}
-                            </span>
-                        </div>
-                        <div v-if="agent.status?.device" class="mt-2 text-xs leading-relaxed text-zinc-500">
-                            <div class="truncate">{{ agent.status.device.name || agent.status.device.host }}</div>
-                            <div class="truncate font-mono">{{ agent.status.device.workdir }}</div>
+                        <h3 class="mb-1 text-xs font-semibold uppercase tracking-wider text-zinc-500">设备</h3>
+                        <p class="field-note !mt-0 mb-3">每台跑着 Roam Computer 的电脑在这里登记。名字和描述会出现在助理的系统提示里，写清楚这台机器是干什么的，助理才知道该把任务派给谁。</p>
+                        <div v-if="!ws.devices.length" class="text-sm text-zinc-500">还没有设备接入过。在电脑上运行 <code class="font-mono">npm start</code> 即可。</div>
+                        <div v-for="device in ws.devices" :key="device.id" class="mb-3 rounded-lg border border-zinc-800 bg-zinc-950/60 p-3 last:mb-0">
+                            <div class="mb-2 flex items-center gap-2 text-xs">
+                                <span class="h-2 w-2 shrink-0 rounded-full" :class="device.online ? 'bg-emerald-500' : 'bg-zinc-600'"></span>
+                                <span :class="device.online ? 'text-emerald-400' : 'text-zinc-500'">{{ lastSeen(device) }}</span>
+                                <span class="text-zinc-600">·</span>
+                                <span class="text-zinc-500">浏览器插件{{ device.browser ? '已连接' : '未连接' }}</span>
+                                <span class="ml-auto truncate font-mono text-zinc-600">{{ device.id }}</span>
+                            </div>
+                            <div class="space-y-2">
+                                <label class="block">
+                                    <span class="field-k">名字</span>
+                                    <input class="field" v-model="deviceForm(device).name" :placeholder="device.host || '设备名字'" spellcheck="false" />
+                                </label>
+                                <label class="block">
+                                    <span class="field-k">描述</span>
+                                    <textarea class="field" v-model="deviceForm(device).description" rows="2" spellcheck="false"
+                                        placeholder="这台机器干什么用、装了什么环境、常用目录在哪……"></textarea>
+                                </label>
+                            </div>
+                            <div class="mt-2 text-[11.5px] leading-relaxed text-zinc-500">
+                                <span>{{ [device.platform, device.arch].filter(Boolean).join('/') || '未知系统' }}</span>
+                                <span v-if="device.host"> · {{ device.host }}</span>
+                                <span v-if="device.username"> · {{ device.username }}</span>
+                                <div v-if="device.workdir" class="truncate font-mono">{{ device.workdir }}</div>
+                            </div>
+                            <div class="mt-2 flex items-center gap-2">
+                                <button @click="saveDevice(device)" :disabled="!deviceDirty(device) || deviceSaving === device.id"
+                                    class="h-8 rounded bg-emerald-600 px-3 text-xs font-medium text-zinc-950 transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50">
+                                    {{ deviceSaving === device.id ? '保存中…' : '保存' }}
+                                </button>
+                                <button v-if="!device.online" @click="removeDevice(device)"
+                                    class="h-8 rounded border border-zinc-700 bg-zinc-800 px-3 text-xs text-rose-300 transition-colors hover:bg-zinc-700">
+                                    删除登记
+                                </button>
+                            </div>
                         </div>
                     </section>
 
                     <section class="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
                         <h3 class="mb-3 text-xs font-semibold uppercase tracking-wider text-zinc-500">浏览器插件</h3>
                         <p class="text-xs leading-relaxed text-zinc-500">
-                            在 Chrome / Edge 打开扩展程序页，开启开发者模式，「加载已解压的扩展程序」选仓库里的 <code class="font-mono">extension/</code>。
-                            插件会经原生消息自动连上电脑端，不用填地址；要让助理打开本机文件，在插件「详情」里打开「允许访问文件网址」。
+                            在每台要让助理操作浏览器的电脑上：Chrome / Edge 打开扩展程序页，开启开发者模式，「加载已解压的扩展程序」选仓库里的 <code class="font-mono">extension/</code>。
+                            插件会经原生消息自动连上本机的电脑端，不用填地址；要让助理打开本机文件，在插件「详情」里打开「允许访问文件网址」。连接状态见上面各设备的标注。
                         </p>
-                        <div class="mt-2 text-sm">
-                            <span class="text-zinc-500">状态：</span>
-                            <span :class="agent.status?.browser_connected ? 'text-emerald-400' : 'text-zinc-400'">
-                                {{ agent.status?.browser_connected ? '已连接' : '未连接' }}
-                            </span>
-                        </div>
                     </section>
 
                 </template>
 
                 <section class="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
                     <h3 class="mb-3 text-xs font-semibold uppercase tracking-wider text-zinc-500">关于</h3>
-                    <p class="text-xs leading-relaxed text-zinc-500">本项目把本机终端 / 文件 / 屏幕带到任意浏览器；AI 助理的会话、消息和配置存在云端 D1 / R2，工具调用转发到你的电脑执行。</p>
+                    <p class="text-xs leading-relaxed text-zinc-500">本项目把多台电脑的终端 / 文件 / 屏幕带到任意浏览器；AI 助理的会话、消息和配置存在云端 D1 / R2，工具调用按会话或参数指定的设备转发执行。</p>
                     <dl class="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
                         <dt class="text-zinc-500">连接</dt>
                         <dd class="truncate text-right text-zinc-100">{{ ws.statusText }}</dd>

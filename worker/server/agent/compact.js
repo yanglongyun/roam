@@ -7,7 +7,7 @@ export default async function compact({
   messages,
   model,
   config,
-  device,
+  scope = {},
   signal,
   onEvent = () => {},
 }) {
@@ -43,7 +43,7 @@ export default async function compact({
     .join('\n');
   const response = await callModel(
     env,
-    renderPrompt(config.compact_system, device),
+    renderPrompt(config.compact_system, scope),
     [message(source)],
     model,
     config,
@@ -61,7 +61,7 @@ export default async function compact({
     throw new Error('压缩没有返回摘要');
   }
   return {
-    item: message(renderPrompt(config.compact_prefix, device) + summary),
+    item: message(renderPrompt(config.compact_prefix, scope) + summary),
     start: 0,
     end: count,
     usage: response.usage || null,

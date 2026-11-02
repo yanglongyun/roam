@@ -1,46 +1,85 @@
 import { defineStore } from 'pinia';
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 
 const DISCONNECT_GRACE_MS = 10000;
+const TOKEN_KEY = 'roam_auth';
+const DEVICE_KEY = 'roam_device';
 
 export const useWsStore = defineStore('ws', () => {
-    const sessionId = ref(null);
     const clientId = ref('');
     const state = ref('pending');
     const statusText = ref('连接中...');
-    const showActions = ref(false);
-    // 电脑端（设备）是否在线：会话和模型在云端，工具要靠它。
-    const desktopOnline = ref(false);
-    const invalid = ref(false);
     const authenticated = ref(false);
-    const requiresPassword = ref(false);
+    const passwordSet = ref(true);
     const authError = ref('');
     const authClosed = ref(false);
-    const superseded = ref(false);
     const disconnectedSince = ref(0);
     const disconnectGraceExpired = ref(false);
+
+    // 已登记的设备（云端推送），以及网页当前操作的设备：终端 / 文件 / 屏幕 / 状态都对着它。
+    const devices = ref([]);
+    const currentDeviceId = ref(readDevice());
 
     const handlers = new Map();
     let ws = null;
     let reconnectTimer = null;
     let disconnectGraceTimer = null;
-    let challengeNonce = '';
-    let lastChallengeReqAt = 0;
 
     const connectionLost = computed(() => Boolean(disconnectedSince.value && disconnectGraceExpired.value));
     const isReconnecting = computed(() => Boolean(disconnectedSince.value && !connectionLost.value));
-    const canUseActions = computed(() => state.value === 'connected' && showActions.value);
+    const showActions = computed(() => state.value === 'connected' && authenticated.value);
+    const currentDevice = computed(() => devices.value.find((device) => device.id === currentDeviceId.value) || null);
+    const onlineDevices = computed(() => devices.value.filter((device) => device.online));
+    const desktopOnline = computed(() => Boolean(currentDevice.value?.online));
+    const canUseActions = computed(() => showActions.value && desktopOnline.value);
 
-    function tokenKey() { return `roam_auth_${sessionId.value || ''}`; }
     function readToken() {
-        try { return localStorage.getItem(tokenKey()) || ''; } catch { return ''; }
+        try { return localStorage.getItem(TOKEN_KEY) || ''; } catch { return ''; }
     }
     function writeToken(t) {
         try {
-            if (t) localStorage.setItem(tokenKey(), t);
-            else localStorage.removeItem(tokenKey());
+            if (t) localStorage.setItem(TOKEN_KEY, t);
+            else localStorage.removeItem(TOKEN_KEY);
         } catch {}
     }
+    function readDevice() {
+        try { return localStorage.getItem(DEVICE_KEY) || ''; } catch { return ''; }
+    }
+    function writeDevice(id) {
+        try {
+            if (id) localStorage.setItem(DEVICE_KEY, id);
+            else localStorage.removeItem(DEVICE_KEY);
+        } catch {}
+    }
+
+    function deviceLabel(device) {
+        if (!device) return '未选择设备';
+        return device.name || device.host || device.id;
+    }
+
+    function selectDevice(id) {
+        if (!id || id === currentDeviceId.value) return;
+        currentDeviceId.value = id;
+        writeDevice(id);
+    }
+
+    // 设备列表更新后：当前选中的不在列表里（或从没选过）就挑在线的第一台。
+    watch(devices, (list) => {
+        if (list.some((device) => device.id === currentDeviceId.value)) return;
+        const pick = list.find((device) => device.online) || list[0];
+        currentDeviceId.value = pick?.id || '';
+        writeDevice(currentDeviceId.value);
+    });
+
+    function updateStatusText() {
+        if (!devices.value.length) {
+            statusText.value = '没有设备接入';
+            return;
+        }
+        const label = deviceLabel(currentDevice.value);
+        statusText.value = desktopOnline.value ? `${label} 已连接` : `${label} 离线`;
+    }
+    watch([currentDevice, desktopOnline], updateStatusText);
 
     function onMessage(type, handler) {
         handlers.set(type, handler);
@@ -53,80 +92,24 @@ export const useWsStore = defineStore('ws', () => {
         return true;
     }
 
-    function requestChallenge() {
-        // 最多每 500ms 重发一次，避免刷爆
-        const now = Date.now();
-        if (now - lastChallengeReqAt < 500) return;
-        lastChallengeReqAt = now;
-        sendMsg({ type: 'auth.request_challenge', to: 'desktop', data: {} });
+    // 发给当前选中的设备（终端 / 文件 / 屏幕 / 状态）。
+    function sendToDevice(type, data = {}) {
+        if (!currentDeviceId.value) return false;
+        return sendMsg({ type, to: `device:${currentDeviceId.value}`, data });
     }
 
-    async function waitForChallenge(timeoutMs = 2500) {
-        const start = Date.now();
-        while (!challengeNonce && Date.now() - start < timeoutMs) {
-            if (authClosed.value || superseded.value) return false;
-            requestChallenge();
-            await new Promise((r) => setTimeout(r, 200));
-        }
-        return Boolean(challengeNonce);
-    }
-
-    async function hmacHex(password, nonceHex) {
-        const enc = new TextEncoder();
-        const key = await crypto.subtle.importKey(
-            'raw',
-            enc.encode(password),
-            { name: 'HMAC', hash: 'SHA-256' },
-            false,
-            ['sign']
-        );
-        const nonceBytes = hexToBytes(nonceHex);
-        const sig = await crypto.subtle.sign('HMAC', key, nonceBytes);
-        return bytesToHex(new Uint8Array(sig));
-    }
-
-    function hexToBytes(hex) {
-        const out = new Uint8Array(hex.length / 2);
-        for (let i = 0; i < out.length; i++) {
-            out[i] = parseInt(hex.substr(i * 2, 2), 16);
-        }
-        return out;
-    }
-
-    function bytesToHex(bytes) {
-        return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
-    }
-
-    async function submitPassword(password) {
+    function submitPassword(password) {
         authError.value = '';
         if (authClosed.value) {
-            authError.value = '认证已锁定';
+            authError.value = '认证已锁定，请稍后刷新重试';
             return;
         }
-        if (!challengeNonce) {
-            const ok = await waitForChallenge();
-            if (!ok) {
-                authError.value = authClosed.value ? '认证已锁定' : '客户端未就绪，请稍候再试';
-                return;
-            }
-        }
-        try {
-            const proof = await hmacHex(String(password || ''), challengeNonce);
-            sendMsg({ type: 'auth.submit', to: 'desktop', data: { proof } });
-        } catch (err) {
-            authError.value = err?.message || '本地签名失败';
+        if (!sendMsg({ type: 'auth.submit', to: 'hub', data: { password: String(password || '') } })) {
+            authError.value = '尚未连上云端，请稍候再试';
         }
     }
 
     function init() {
-        const s = new URLSearchParams(location.search).get('session');
-        if (!s || s === 'default') {
-            invalid.value = true;
-            state.value = 'offline';
-            statusText.value = '无效的访问链接';
-            return false;
-        }
-        sessionId.value = s;
         connect();
         window.addEventListener('beforeunload', () => ws?.close());
         return true;
@@ -135,7 +118,7 @@ export const useWsStore = defineStore('ws', () => {
     function connect() {
         clearTimeout(reconnectTimer);
         const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const params = new URLSearchParams({ session: sessionId.value, device: 'web' });
+        const params = new URLSearchParams({ device: 'web' });
         const savedToken = readToken();
         if (savedToken) params.set('authToken', savedToken);
         const url = `${protocol}//${location.host}/ws?${params.toString()}`;
@@ -144,15 +127,10 @@ export const useWsStore = defineStore('ws', () => {
         statusText.value = connectionLost.value
             ? '连接已断开，重连中...'
             : (disconnectedSince.value ? '重连中...' : '连接中...');
-        challengeNonce = '';
-        lastChallengeReqAt = 0;
         ws = new WebSocket(url);
 
         ws.onopen = () => {
             state.value = 'pending';
-            statusText.value = connectionLost.value
-                ? '连接已断开，重连中...'
-                : (disconnectedSince.value ? '重连中...' : '等待客户端...');
         };
 
         ws.onmessage = (event) => {
@@ -161,42 +139,38 @@ export const useWsStore = defineStore('ws', () => {
                 if (msg.type === 'connection.ready') {
                     clientId.value = msg.data?.clientId || '';
                     authenticated.value = Boolean(msg.data?.authenticated);
-                    requiresPassword.value = Boolean(msg.data?.requiresPassword);
+                    passwordSet.value = msg.data?.passwordSet !== false;
+                    if (!passwordSet.value) authClosed.value = true;
                 }
                 if (msg.type === 'auth.state') {
                     authenticated.value = Boolean(msg.data?.authenticated);
-                    requiresPassword.value = Boolean(msg.data?.requiresPassword);
                     authError.value = msg.data?.error || '';
                     if (msg.data?.closed) {
                         authClosed.value = true;
-                        writeToken('');  // 被锁：丢弃本地 token
-                    }
-                    if (msg.data?.kicked) {
-                        superseded.value = true;
+                        writeToken('');  // 被锁或没设密码：丢弃本地令牌
                     }
                     if (msg.data?.sessionToken) {
                         writeToken(String(msg.data.sessionToken));
                     }
                 }
-                if (msg.type === 'auth.challenge' && msg.data?.nonce) {
-                    challengeNonce = String(msg.data.nonce);
-                }
-                if (msg.type === 'connection.devices' && msg.data?.devices) {
-                    desktopOnline.value = msg.data.devices.desktop === 'connected';
-                    statusText.value = desktopOnline.value ? '电脑端已连接' : '电脑端未连接';
+                if (msg.type === 'connection.devices' && Array.isArray(msg.data?.devices)) {
+                    devices.value = msg.data.devices;
+                    updateStatusText();
                 }
                 if (msg.type === 'auth.state' || msg.type === 'connection.ready') {
-                    // 连上云端就能用：对话、配置、消息都在云端，电脑端只负责执行工具。
+                    // 连上云端就能用：对话、配置、消息都在云端，设备只负责执行。
                     state.value = 'connected';
-                    statusText.value = desktopOnline.value ? '电脑端已连接' : '电脑端未连接';
                     disconnectedSince.value = 0;
                     disconnectGraceExpired.value = false;
                     clearTimeout(disconnectGraceTimer);
-                    showActions.value = authenticated.value || !requiresPassword.value;
-                    if (!authenticated.value && requiresPassword.value && !challengeNonce && !authClosed.value) {
-                        requestChallenge();
+                    if (!authenticated.value) {
+                        statusText.value = passwordSet.value ? '等待登录' : '未设置访问密码';
+                    } else {
+                        updateStatusText();
                     }
                 }
+                // 来自设备的消息带 meta.deviceId；不是当前设备的直接忽略，各视图只看选中的那台。
+                if (msg.meta?.deviceId && msg.meta.deviceId !== currentDeviceId.value) return;
                 handlers.get(msg.type)?.(msg);
             } catch (e) {
                 console.error('处理消息失败:', e);
@@ -205,27 +179,13 @@ export const useWsStore = defineStore('ws', () => {
 
         ws.onclose = (event) => {
             state.value = 'offline';
-            desktopOnline.value = false;
-            challengeNonce = '';
-            lastChallengeReqAt = 0;
             if (event?.code === 4003 || authClosed.value) {
                 authenticated.value = false;
-                showActions.value = false;
                 disconnectedSince.value = 0;
                 disconnectGraceExpired.value = false;
                 clearTimeout(disconnectGraceTimer);
-                statusText.value = '认证已锁定';
+                statusText.value = passwordSet.value ? '认证已锁定' : '未设置访问密码';
                 writeToken('');
-                return;
-            }
-            if (event?.code === 4001 || superseded.value) {
-                superseded.value = true;
-                authenticated.value = false;
-                showActions.value = false;
-                disconnectedSince.value = 0;
-                disconnectGraceExpired.value = false;
-                clearTimeout(disconnectGraceTimer);
-                statusText.value = '已在另一台设备登录';
                 return;
             }
             if (!disconnectedSince.value) {
@@ -259,9 +219,10 @@ export const useWsStore = defineStore('ws', () => {
     }
 
     return {
-        sessionId, clientId, state, statusText, showActions, desktopOnline, invalid,
-        authenticated, requiresPassword, authError, authClosed, superseded,
+        clientId, state, statusText, showActions, desktopOnline,
+        authenticated, passwordSet, authError, authClosed,
         disconnectedSince, isReconnecting, connectionLost, canUseActions,
-        init, sendMsg, onMessage, submitPassword,
+        devices, currentDeviceId, currentDevice, onlineDevices, deviceLabel, selectDevice,
+        init, sendMsg, sendToDevice, onMessage, submitPassword,
     };
 });

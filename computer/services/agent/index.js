@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import ws from '../../ws.js';
+import { DEVICE_NAME, DEVICE_DESCRIPTION } from '../../core/env.js';
 import { paths, defaults } from './config.js';
 import { imageTypes } from './images.js';
 import { startBrowser } from './browser/bridge.js';
@@ -46,15 +47,17 @@ function start({ browser = true } = {}) {
     }
 }
 
-// 连上后告诉云端这台电脑是谁、能从哪里开始干活，会话列表和系统提示都要用。
+// 连上后告诉云端这台电脑是谁、能从哪里开始干活，设备列表和系统提示都要用。
+// 名字和描述只是初始值：云端改过之后以云端为准。
 function report() {
     if (!context) return;
     ws.send({
         type: 'device.report',
-        to: 'desktop',
+        to: 'server',
         data: {
-            id: 'desktop',
-            name: `${os.userInfo().username} 的 ${os.type() === 'Darwin' ? 'Mac' : os.hostname()}`,
+            id: ws.getDeviceId(),
+            name: DEVICE_NAME || `${os.userInfo().username} 的 ${os.type() === 'Darwin' ? 'Mac' : os.hostname()}`,
+            description: DEVICE_DESCRIPTION,
             platform: process.platform,
             arch: process.arch,
             host: os.hostname(),
@@ -125,7 +128,7 @@ async function handle(message) {
     const { call_id: callId } = message.data || {};
     if (!callId) return true;
     const result = await execute(message.data);
-    ws.send({ type: 'tool.result', to: 'desktop', data: { call_id: callId, result } });
+    ws.send({ type: 'tool.result', to: 'server', data: { call_id: callId, result } });
     return true;
 }
 

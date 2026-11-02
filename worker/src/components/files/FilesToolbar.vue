@@ -41,12 +41,8 @@ async function toggleSearch() {
 function openInTerminal() {
     if (!ws.canUseActions || !files.cwd) return;
     const escaped = files.cwd.replace(/"/g, '\\"');
-    ws.sendMsg({
-        type: 'data.input',
-        to: 'desktop',
-        data: { terminalId: term.activeTerminalId, input: `cd "${escaped}"\r` }
-    });
-    router.push({ path: '/terminal', query: route.query });
+    ws.sendToDevice('data.input', { terminalId: term.activeTerminalId, input: `cd "${escaped}"\r` });
+    router.push({ path: '/terminal' });
     toast.show('已切到终端');
 }
 

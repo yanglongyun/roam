@@ -9,7 +9,7 @@ export async function run({
   messages,
   model,
   config,
-  device = null,
+  scope = {},
   tools = [],
   runTool,
   usage = null,
@@ -29,7 +29,7 @@ export async function run({
 
       if (Number.isFinite(usage?.total_tokens) && usage.total_tokens >= config.compact_at) {
         stage = 'compact';
-        const compressed = await compact({ env, messages, model, config, device, signal, onEvent });
+        const compressed = await compact({ env, messages, model, config, scope, signal, onEvent });
         if (compressed) {
           // 调用方保存摘要成功后，才替换上下文并继续请求。
           await onEvent({ type: 'compact', status: 'completed', ...compressed });
@@ -85,7 +85,7 @@ export async function run({
       stage = 'tool';
       for (const call of calls) {
         signal?.throwIfAborted();
-        const output = await runTool(call, { env, config, device, signal });
+        const output = await runTool(call, { env, config, scope, signal });
         signal?.throwIfAborted();
         const item = {
           type: 'function_call_output',
