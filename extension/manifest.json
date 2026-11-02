@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Roam",
-  "description": "让 Roam 助理在你的浏览器里打开网页、读取内容、点击和输入。",
-  "version": "0.1.0",
+  "description": "让 Roam 助理操作你的浏览器：所有标签页、页面里的一切（开发者工具协议），以及下载、cookie、历史和书签。",
+  "version": "0.2.0",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxIZABZYCGKeGHuBXTp5hWthWwAIk8vzIAEgGXSECgGqNGpLwSvwiXR1MV+LylA/aL7NTsPColTPodTsCt/lZWs1u07Qu5vs6WY1IBbuthCO7wRThbaNorlS/2A3PiQpJO0zFRf7/fKn1Yo+7+mdzsgG/Spb0U/p+AhdYe7ZWVnfWxosmXwDUy54ZmlqBlitW+06Hn7PdRlz4dlfmOxuPy5Zzv7GIdOhO9eE/ZfYPJuR2XF6ZeJ+emuCG6CuXSgijBwkyPCADyTgdM55TeG7LovwkJKrPPHpuygBfyiWSrN3/L56qnfiNQhcEdtOmfpOdj5T2GykDFpe8FKaFOPdtjQIDAQAB",
   "permissions": [
     "nativeMessaging",
@@ -10,7 +10,17 @@
     "tabs",
     "tabGroups",
     "alarms",
-    "storage"
+    "storage",
+    "downloads",
+    "downloads.open",
+    "cookies",
+    "history",
+    "bookmarks",
+    "sessions",
+    "topSites"
+  ],
+  "host_permissions": [
+    "<all_urls>"
   ],
   "background": {
     "service_worker": "background.js"

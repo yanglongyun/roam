@@ -11,7 +11,7 @@
 - `computer/`：电脑端，提供终端 / 文件 / 屏幕，执行助理的工具调用；配置在 `config.js`（或 `.env` / 环境变量），必填 `CLOUDFLARE_WORKER_URL` 和 `DEVICE_TOKEN`。
 - `computer/services/agent/`：电脑端只剩工具执行（`agent/functions/*`）和浏览器桥，不再有数据库和模型调用。
 - `computer/services/agent/browser/`：对应 agentic launcher 的浏览器桥、原生消息宿主和宿主登记；宿主名 `yun.roam.browser`。
-- `extension/`：Roam 浏览器插件（取自 agentic 插件），manifest 里的 key 决定固定 ID `opkcnndhnmkilimegkcgeecanhjebpge`，要和 `register-host.js` 一致。
+- `extension/`：Roam 浏览器插件（取自 agentic 插件），manifest 里的 key 决定固定 ID `opkcnndhnmkilimegkcgeecanhjebpge`，要和 `register-host.js` 一致。权限按最高能力给：`debugger` + `<all_urls>` + 所有标签页，`chrome` 动作开放 tabs / windows / tabGroups / downloads / cookies / history / bookmarks / sessions / topSites 这几个命名空间；browsingData、management、proxy 这类改浏览器本身的故意不开。浏览器工具的执行在 `computer/services/agent/agent/functions/browser.js`，给模型的说明在 `worker/server/agent/tools.js`，三处要一起改。
 
 ## 链路
 

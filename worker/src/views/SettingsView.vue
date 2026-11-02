@@ -198,7 +198,7 @@ watch(() => ws.showActions, (online) => { if (online) load(); }, { immediate: tr
                         <h3 class="mb-3 text-xs font-semibold uppercase tracking-wider text-zinc-500">浏览器插件</h3>
                         <p class="text-xs leading-relaxed text-zinc-500">
                             在 Chrome / Edge 打开扩展程序页，开启开发者模式，「加载已解压的扩展程序」选仓库里的 <code class="font-mono">extension/</code>。
-                            插件会经原生消息自动连上电脑端，不用填地址。
+                            插件会经原生消息自动连上电脑端，不用填地址；要让助理打开本机文件，在插件「详情」里打开「允许访问文件网址」。
                         </p>
                         <div class="mt-2 text-sm">
                             <span class="text-zinc-500">状态：</span>

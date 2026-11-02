@@ -63,8 +63,12 @@ const deviceTools = [
   {
     type: 'function',
     name: 'browser',
-    description: `控制用户的浏览器（Chrome / Edge）。只能操作你用 open 打开的标签页，它们放在以当前对话标题命名的标签组里。
-open 打开网页并等加载完；页面里的一切操作用 cdp 发送 Chrome 开发者工具协议命令，method 是命令名，params 是参数。常用做法：
+    description: `控制用户的浏览器（Chrome / Edge），能力等同开发者工具，所有标签页都能操作，包括用户自己打开、已经登录的页面。
+- tabs 列出所有窗口的标签页，标出当前页和你打开的页
+- open 打开网址（https、file 等）并等加载完：不带 tab 新开一个，放进以当前对话标题命名的标签组；带 tab 在那个标签页跳转
+- close 关闭标签页；detach 断开对某个标签页的调试，顶部的“正在调试”提示会消失
+- chrome 调用浏览器扩展接口：api 写成“命名空间.方法”，args 是参数数组。可用命名空间 tabs、windows、tabGroups、downloads、cookies、history、bookmarks、sessions、topSites。例如下载文件 api "downloads.download" args [{ url }]；读某站全部 cookie api "cookies.getAll" args [{ domain: "github.com" }]；查历史 api "history.search" args [{ text: "关键词", startTime: 0, maxResults: 20 }]；搜书签 api "bookmarks.search" args ["关键词"]；最近关闭 api "sessions.getRecentlyClosed" args [{}]
+- cdp 对标签页发送 Chrome 开发者工具协议命令，method 是命令名，params 是参数。常用做法：
 - 读文字：Runtime.evaluate { expression: "document.body.innerText", returnByValue: true }
 - 执行 JS：Runtime.evaluate { expression, awaitPromise: true, returnByValue: true }
 - 点击：先用 Runtime.evaluate 取元素 getBoundingClientRect 的中心，再依次发 Input.dispatchMouseEvent mouseMoved、mousePressed、mouseReleased（button: "left", clickCount: 1）
@@ -72,19 +76,26 @@ open 打开网页并等加载完；页面里的一切操作用 cdp 发送 Chrome
 - 按键：Input.dispatchKeyEvent keyDown 和 keyUp（key、code、windowsVirtualKeyCode）
 - 滚动：Input.dispatchMouseEvent { type: "mouseWheel", x, y, deltaX: 0, deltaY }
 - 截图：Page.captureScreenshot { format: "png", clip: { x: scrollX, y: scrollY, width: innerWidth, height: innerHeight, scale: 1 / devicePixelRatio } }，这样图片坐标就是点击坐标；截图会作为图片交给你
-点击或跳转后页面可能还在加载，需要时用 Runtime.evaluate 查 document.readyState。`,
+点击或跳转后页面可能还在加载，需要时用 Runtime.evaluate 查 document.readyState。chrome:// 页面、应用商店和其他扩展的页面不能用 cdp。
+在用户已登录的页面里操作就是以用户身份操作：提交表单、发消息、付款、删除这类撤不回的动作，先向用户确认。`,
     parameters: {
       type: 'object',
       properties: {
         action: {
           type: 'string',
-          enum: ['tabs', 'open', 'close', 'cdp'],
-          description: 'tabs 列出已打开的标签页；open 打开网址（带 tab 则在该标签页跳转）；close 关闭标签页；cdp 发送 CDP 命令',
+          enum: ['tabs', 'open', 'close', 'detach', 'cdp', 'chrome'],
+          description: 'tabs 列出所有标签页；open 打开网址（带 tab 则在该标签页跳转）；close 关闭标签页；detach 断开调试；cdp 发送 CDP 命令；chrome 调用扩展接口',
         },
-        tab: { type: 'integer', description: '标签页编号，open 返回' },
+        tab: { type: 'integer', description: '标签页编号，tabs 和 open 会给出' },
         url: { type: 'string', description: 'open 的网址' },
         method: { type: 'string', description: 'cdp 的命令名，如 Runtime.evaluate、Input.dispatchMouseEvent、Page.captureScreenshot' },
         params: { type: 'object', description: 'cdp 的命令参数' },
+        api: { type: 'string', description: 'chrome 的接口，如 downloads.download、cookies.getAll、history.search' },
+        args: {
+          type: 'array',
+          description: 'chrome 接口的参数列表，按顺序传给接口',
+          items: { type: ['object', 'string', 'number', 'boolean', 'null'] },
+        },
       },
       required: ['action'],
     },
