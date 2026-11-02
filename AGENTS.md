@@ -25,6 +25,7 @@
 - 网页发 `agent.request {reqId, op, args}`，回 `agent.result`；助理事件经 `agent.event` 推送（`session_id` + 事件字段平铺，事件类型 `message` / `reasoning`（带 `delta` 是流式片段，带 `item` 是完整一项）/ `function_call` / `function_call_output` / `usage` / `compact`（`status` 为 started / completed）/ `retry` / `error` / `done`）。
 - API Key 用 `SETTINGS_KEY` 加密后存 D1，只在 DO 里解密使用；模型请求从 Worker 发出，电脑端只收 `tool.call`。
 - 电脑端接入要带 `Authorization: Bearer <DEVICE_TOKEN>`，Worker 在转给 DO 之前校验，不对就 401。电脑端能免密码、能放行网页，D1 又是全局的，这道校验不能去掉。
+- R2（绑定名 `IMAGES`）是可选的：开通 R2 要绑卡，开源用户多半没有。没绑时 `status.get` 返回 `images: false`，前端隐藏发图按钮，上传和带图发送直接报错，工具截图换成一句文字说明，提示词里也会告诉模型看不到图；历史里取不到的图片在发给模型时换成 `[图片不可用]`，不让整次请求失败。
 - D1 是整个部署共用的（一个部署 = 一个用户），不按 session 隔离；没设密码时 session id 就是唯一凭据，旧 session 的链接也能看到全部对话。
 - 界面：右上角宫格是应用中心（助理 / 终端 / 文件 / 状态 / 屏幕 / 设置），默认进助理；左上角汉堡菜单随应用变化（助理=对话列表，终端=终端列表）。
 

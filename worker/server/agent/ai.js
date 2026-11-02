@@ -78,7 +78,13 @@ async function prepareImages(env, messages, signal) {
     for (const part of parts) {
       const name = part.type === 'input_image' ? nameOf(part.image_url) : null;
       if (name) {
-        content.push({ ...part, image_url: await dataUrl(env, name) });
+        // 图片已被删掉或这个部署没有 R2：换成一句说明，别让整次请求失败。
+        try {
+          content.push({ ...part, image_url: await dataUrl(env, name) });
+        } catch (error) {
+          if (error.status !== 404) throw error;
+          content.push({ type: 'input_text', text: '[图片不可用]' });
+        }
       } else {
         content.push(part);
       }

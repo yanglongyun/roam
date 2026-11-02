@@ -19,6 +19,8 @@ let imageVersion = 0;
 const TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
 const canSend = computed(() => ws.showActions && agent.ready && !agent.busy && !reading.value
     && (text.value.trim().length > 0 || images.value.length > 0));
+// Worker 没绑 R2 时不能收发图片：藏起按钮，粘贴图片给个提示。
+const imagesOff = computed(() => agent.status?.images === false);
 
 function readFile(file) {
     return new Promise((resolve, reject) => {
@@ -31,6 +33,10 @@ function readFile(file) {
 
 async function addFiles(files) {
     if (!files.length) return;
+    if (imagesOff.value) {
+        toast.show('这个部署没有绑定 R2，不能发送图片');
+        return;
+    }
     if (images.value.length + files.length > 5) {
         toast.show('每条消息最多发送 5 张图片');
         return;
@@ -120,7 +126,7 @@ function autoGrow(event) {
             ></textarea>
             <div class="composer-bar">
                 <input ref="fileRef" type="file" hidden multiple accept="image/png,image/jpeg,image/gif,image/webp" @change="onPick" />
-                <button class="tool-btn" title="添加图片（最多 5 张）"
+                <button v-if="!imagesOff" class="tool-btn" title="添加图片（最多 5 张）"
                     :disabled="agent.busy || reading || images.length === 5 || !ws.showActions"
                     @click="fileRef?.click()">
                     <Icon name="image" :size="18" />

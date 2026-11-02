@@ -9,15 +9,15 @@
  *        不绑就把整个 "routes" 段删掉,Worker 会自动给一个
  *        roam.<your-subdomain>.workers.dev 的测试地址。
  *
- * 数据都在云端:会话 / 消息 / 配置 / 设备登记进 D1,图片进 R2。
- * 先在控制台(或 wrangler d1 create / r2 bucket create)建好这两样,
- * 再把下面的 database_id 和 bucket_name 换成自己的:
+ * 助理的会话 / 消息 / 配置 / 设备登记进 D1。先建库,再把下面的 database_id 换成自己的:
  *   npx wrangler d1 create roam
- *   npx wrangler r2 bucket create roam
  *   npx wrangler d1 execute roam --remote --file=server/agent/schema.sql
  *   npx wrangler secret put SETTINGS_KEY    # 用来加密存 API Key
  *   npx wrangler secret put DEVICE_TOKEN    # 电脑端接入凭据，computer/config.js 填同一个值
  * 两个值都用随机串，比如 openssl rand -base64 32。
+ *
+ * 图片存 R2,是可选的(开通 R2 要绑卡)。不绑就不能收发图片,其余功能照常;
+ * 要绑的话先 npx wrangler r2 bucket create roam,再把下面 r2_buckets 段的注释去掉。
  */
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
@@ -37,12 +37,12 @@
 			"database_id": "<YOUR_D1_DATABASE_ID>"
 		}
 	],
-	"r2_buckets": [
-		{
-			"binding": "IMAGES",
-			"bucket_name": "roam"
-		}
-	],
+	// "r2_buckets": [
+	// 	{
+	// 		"binding": "IMAGES",
+	// 		"bucket_name": "roam"
+	// 	}
+	// ],
 	"durable_objects": {
 		"bindings": [
 			{

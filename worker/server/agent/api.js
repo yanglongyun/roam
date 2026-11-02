@@ -6,7 +6,7 @@ import { createRunner } from './runner.js';
 import { message } from './ai.js';
 import { describeAvailability, listTools } from './tools.js';
 import * as store from './store.js';
-import { deleteImages, nameOf, readImage, saveImage } from './images.js';
+import { deleteImages, imagesEnabled, nameOf, readImage, saveImage } from './images.js';
 import { toBase64 } from './crypto.js';
 
 const { fail, pick } = store;
@@ -22,6 +22,7 @@ export async function status(ctx) {
     workdir: config.workdir || device?.workdir || '',
     device_online: ctx.deviceOnline(),
     browser_connected: Boolean(device?.browser),
+    images: imagesEnabled(ctx.env),
     device: device
       ? {
           id: device.id,
@@ -120,6 +121,9 @@ async function messagesSend(ctx, args) {
   const bytes = new TextEncoder().encode(typeof text === 'string' ? text : '').length;
   if (typeof text !== 'string' || bytes > 128 * 1024 || (!text.trim() && images.length === 0)) {
     fail(400, '请输入文字或选择图片，文字最多 128 KiB');
+  }
+  if (images.length && !imagesEnabled(ctx.env)) {
+    fail(400, '没有绑定 R2，不能发送图片');
   }
   const names = [];
   for (const image of images) {
@@ -226,7 +230,10 @@ async function reply(ctx, id, state) {
     await run({
       env,
       instructions: renderPrompt(
-        config.system.replace('{{device_status}}', describeAvailability({ deviceOnline: online, device })),
+        config.system.replace(
+          '{{device_status}}',
+          describeAvailability({ deviceOnline: online, device, images: imagesEnabled(env) }),
+        ),
         device,
       ),
       messages,

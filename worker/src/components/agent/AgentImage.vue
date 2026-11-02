@@ -1,5 +1,5 @@
 <script setup>
-// 消息里的图片地址 /api/images/<文件名> 指向电脑端，经助理 store 取回成 blob 地址再显示
+// 消息里的图片地址 /api/images/<文件名> 存在云端 R2，经助理 store 取回成 blob 地址再显示
 import { ref, watchEffect } from 'vue';
 import { useAgentStore } from '@/stores/agent';
 

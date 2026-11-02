@@ -115,10 +115,13 @@ export function listTools({ deviceOnline = false } = {}) {
 }
 
 // 给系统提示补一句当前处境，避免模型看不到设备时反复尝试。
-export function describeAvailability({ deviceOnline = false, device = null } = {}) {
+export function describeAvailability({ deviceOnline = false, device = null, images = true } = {}) {
   if (deviceOnline) {
     const name = device?.name || device?.host || '设备';
-    return `设备「${name}」已连接，可以用 shell / read / write / edit / browser 操作它，也可以用 sql 查自己的数据。`;
+    const note = images
+      ? ''
+      : '这个部署没有图片存储：read 读图片、browser 截图都拿不到图片内容，看网页时用 Runtime.evaluate 读文字和元素位置。';
+    return `设备「${name}」已连接，可以用 shell / read / write / edit / browser 操作它，也可以用 sql 查自己的数据。${note}`;
   }
   return '设备当前离线：只有 sql 工具可用，shell / read / write / edit / browser 都不可用，需要设备上的操作时如实说明并请用户连上设备。';
 }

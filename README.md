@@ -2,7 +2,7 @@
 
 **在手机上继续使用电脑里的 Claude Code / Codex** —— 把电脑端的终端 / 文件 / 屏幕带到任意设备的浏览器上,再加一个跑在云端、能操作你电脑的 AI 助理。
 
-机器不暴露公网。电脑端主动连 Cloudflare Worker,远程网页也只连 Worker。终端、文件、屏幕的数据只经 Worker 中继,不落地;助理的对话和配置存在你自己 Cloudflare 账号的 D1 / R2 里。
+机器不暴露公网。电脑端主动连 Cloudflare Worker,远程网页也只连 Worker。终端、文件、屏幕的数据只经 Worker 中继,不落地;助理的对话和配置存在你自己 Cloudflare 账号的 D1 里。全部用免费额度,不用绑卡。
 
 | 终端 | 文件管理 | 系统状态 |
 |---|---|---|
@@ -26,7 +26,7 @@ roam/
 ```text
 远程浏览器
   ↓ https / wss
-Cloudflare Worker(终端/文件/屏幕只中继;助理跑在这里,对话存 D1,图片存 R2)
+Cloudflare Worker(终端/文件/屏幕只中继;助理跑在这里,对话存 D1,图片存 R2(可选))
   ↓ wss(带 DEVICE_TOKEN)
 Roam Computer(终端 / 文件 / 屏幕 / 执行助理的工具)
 ```
@@ -42,7 +42,7 @@ Roam Computer(终端 / 文件 / 屏幕 / 执行助理的工具)
 ## 前置要求
 
 - Node.js 22+
-- Cloudflare 账号(用到 Workers、Durable Objects、D1、R2)
+- Cloudflare 账号,免费计划就行(用到 Workers、Durable Objects、D1;想让助理收发图片再开 R2,开通 R2 要绑卡)
 - 一台运行 Roam Computer 的电脑
 
 ## 部署 Worker
@@ -54,11 +54,10 @@ npm install
 cp wrangler.example.jsonc wrangler.jsonc
 ```
 
-建好助理要用的数据库和图片桶:
+建好助理要用的数据库:
 
 ```bash
 npx wrangler d1 create roam
-npx wrangler r2 bucket create roam
 ```
 
 编辑 `worker/wrangler.jsonc`:
@@ -85,6 +84,18 @@ npm run deploy
 
 - `https://roam.<your-subdomain>.workers.dev`
 - `https://i.example.com`
+
+### 可选:开启图片(R2)
+
+不开 R2 时,助理只能收发文字:网页上不显示发图按钮,`read` 读图片、`browser` 截图也看不到图片内容(浏览器工具改用读网页文字和元素位置)。
+
+要开的话,先在 Cloudflare 控制台开通 R2(需要绑卡,免费额度每月 10 GB),然后:
+
+```bash
+npx wrangler r2 bucket create roam
+```
+
+把 `worker/wrangler.jsonc` 里 `r2_buckets` 段的注释去掉,再 `npm run deploy`。
 
 ## 配置 Computer
 
@@ -127,7 +138,7 @@ npm start
 1. 打开「设置」,填 Responses 接口地址(如 `https://api.openai.com/v1/responses`)、API Key、模型并保存
 2. 回到「助理」直接说要做什么,可以附带图片(每条最多 5 张)
 
-会话、消息、设置和设备登记存在 D1,图片存在 R2;API Key 用 `SETTINGS_KEY` 加密后入库,网页端只能看到掩码。电脑端本机只留浏览器插件的管道和工具截图的临时目录(`~/.roam/agent/`)。
+会话、消息、设置和设备登记存在 D1,图片存在 R2(没开 R2 就不收发图片);API Key 用 `SETTINGS_KEY` 加密后入库,网页端只能看到掩码。电脑端本机只留浏览器插件的管道和工具截图的临时目录(`~/.roam/agent/`)。
 
 agent 可用的工具:
 
@@ -262,7 +273,7 @@ node tests/extra.mjs   # 密码拦截、运行中停止
 ## 安全边界
 
 - 终端输出、文件内容、屏幕截图只经 Worker 中继,不落地
-- 助理的对话、图片、设置存在你自己账号的 D1 / R2;API Key 用 `SETTINGS_KEY` 加密保存,只在 Worker 里解密
+- 助理的对话、设置存在你自己账号的 D1,图片存在 R2(可选);API Key 用 `SETTINGS_KEY` 加密保存,只在 Worker 里解密
 - 只有带对 `DEVICE_TOKEN` 的电脑端能接入;访问密码由电脑端校验
 - 助理能执行任意命令、读写文件、操作浏览器,权限等同于远程终端;务必设置 `SESSION_PASSWORD`
 - 不设密码时,session id 就是唯一凭据,拿到链接的人能看到全部对话;用过的 session 链接即使电脑端已经换了 session 也依然有效

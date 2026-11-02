@@ -1,6 +1,6 @@
 // 工具分发：sql 在云端直接跑；其余工具转给设备，图片结果存进 R2 再回给模型。
 import { runSql } from './sql.js';
-import { saveImage } from './images.js';
+import { imagesEnabled, saveImage } from './images.js';
 import { DEVICE_TOOLS } from './tools.js';
 
 function parseArgs(raw) {
@@ -47,6 +47,9 @@ export function createRunner({ env, bridge, sendToDevice, sessionId }) {
         return { text: result.text || '执行失败', failed: true };
       }
       // 设备把图片以 base64 托上来，云端存 R2 并换成 /api/images/ 短地址。
+      if (result.image?.base64 && !imagesEnabled(env)) {
+        return { text: `${result.text || ''}\n（图片没有保存：这个部署没有绑定 R2，看不到图片内容）`.trim() };
+      }
       if (result.image?.base64) {
         const bytes = Uint8Array.from(atob(result.image.base64), (ch) => ch.charCodeAt(0));
         const saved = await saveImage(env, {

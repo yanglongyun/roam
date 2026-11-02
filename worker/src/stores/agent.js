@@ -72,7 +72,7 @@ export const useAgentStore = defineStore('agent', () => {
     });
     ws.onMessage('agent.event', (msg) => receiveEvent(msg.data || {}));
 
-    /* ── 图片：消息里是 /api/images/<文件名>，经电脑端取回，缓存成 blob 地址 ── */
+    /* ── 图片：消息里是 /api/images/<文件名>，从云端取回，缓存成 blob 地址 ── */
 
     const imageCache = new Map();
     function imageSrc(url) {

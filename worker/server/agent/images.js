@@ -1,5 +1,6 @@
 // 图片：本体进 R2（键 images/<id>.<ext>），元信息进 D1 的 images 表。
 // 对外地址沿用 /api/images/<name>，前端和模型侧都不用改。
+// R2 是可选的：开通要绑卡，没绑就不收发图片，其余功能照常。
 import { all, one, run } from './db.js';
 import { toBase64 } from './crypto.js';
 
@@ -11,6 +12,10 @@ const TYPES = {
 };
 
 const NAME = /^[a-f0-9-]{36}\.(?:png|jpeg|gif|webp)$/;
+
+export function imagesEnabled(env) {
+  return Boolean(env.IMAGES);
+}
 
 export function urlOf(name) {
   return `/api/images/${name}`;
@@ -27,6 +32,11 @@ function typeOf(name) {
 }
 
 export async function saveImage(env, { bytes, mime, sessionId }) {
+  if (!imagesEnabled(env)) {
+    const error = new Error('没有绑定 R2，不能发送图片');
+    error.status = 400;
+    throw error;
+  }
   const ext = Object.keys(TYPES).find((key) => TYPES[key] === mime);
   if (!ext) {
     const error = new Error('只支持 PNG / JPEG / GIF / WebP 图片');
@@ -52,6 +62,11 @@ export async function readImage(env, name) {
     error.status = 400;
     throw error;
   }
+  if (!imagesEnabled(env)) {
+    const error = new Error('没有绑定 R2，图片不可用');
+    error.status = 404;
+    throw error;
+  }
   const object = await env.IMAGES.get(`images/${name}`);
   if (!object) {
     const error = new Error('图片不存在');
@@ -71,7 +86,9 @@ export async function dataUrl(env, name) {
 export async function deleteImages(env, names) {
   const unique = [...new Set(names.filter((name) => NAME.test(name)))];
   if (!unique.length) return;
-  await env.IMAGES.delete(unique.map((name) => `images/${name}`));
+  if (imagesEnabled(env)) {
+    await env.IMAGES.delete(unique.map((name) => `images/${name}`));
+  }
   await env.DB.batch(
     unique.map((name) => env.DB.prepare('DELETE FROM images WHERE id = ?').bind(name)),
   );
