@@ -86,7 +86,7 @@ async function attachImage(result) {
     }
 }
 
-// 云端带下来的运行参数；坏值一律忽略，保住本机默认。
+// 云端带下来的运行参数和对话信息；坏值一律忽略，保住本机默认。
 function pickSettings(config) {
     if (!config || typeof config !== 'object') return {};
     const next = {};
@@ -95,6 +95,10 @@ function pickSettings(config) {
     for (const key of ['timeout', 'max_output']) {
         const value = config[key];
         if (Number.isSafeInteger(value) && value > 0) next[key] = value;
+    }
+    // 浏览器插件按对话把标签页放进以标题命名的标签组。
+    for (const key of ['session_id', 'session_title']) {
+        if (typeof config[key] === 'string') next[key] = config[key];
     }
     return next;
 }
@@ -106,7 +110,7 @@ async function execute({ name, arguments: args, config } = {}) {
         result = await runTool(
             { name, arguments: JSON.stringify(args ?? {}) },
             // 云端设置覆盖本地默认值；工作目录留空就用这台电脑的用户目录。
-            { ...context.toolConfig, ...pickSettings(config) },
+            { ...context.toolConfig, ...pickSettings(config), browser: context.browser },
             context.controller.signal,
         );
     } catch (error) {

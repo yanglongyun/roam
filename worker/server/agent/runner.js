@@ -41,6 +41,9 @@ export function createRunner({ env, bridge, sendToDevice, sessionId }) {
           workdir: context?.config?.workdir || '',
           timeout: context?.config?.timeout || 120,
           max_output: context?.config?.max_output || 30000,
+          // 浏览器插件按对话建标签组，组名用对话标题。
+          session_id: context?.config?.session_id || '',
+          session_title: context?.config?.session_title || '',
         },
       });
       if (result.failed) {
