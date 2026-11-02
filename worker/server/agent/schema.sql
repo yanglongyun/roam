@@ -46,6 +46,14 @@ CREATE TABLE IF NOT EXISTS devices (
   created_at INTEGER
 );
 
+-- 电脑端当前连着的 session（只有一行）。只有这个 session 的网页能读写助理数据：
+-- 电脑端换了 session 之后，旧链接和旧 session 里发出的免密令牌都碰不到云端数据。
+CREATE TABLE IF NOT EXISTS active (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  session TEXT NOT NULL,
+  updated_at INTEGER
+);
+
 -- 云端配置（键值）：模型地址、模型名、提示词、压缩阈值等。
 -- API Key 也放这里，写入前用 Worker secret 派生的密钥加密。
 CREATE TABLE IF NOT EXISTS settings (

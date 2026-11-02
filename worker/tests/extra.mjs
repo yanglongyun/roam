@@ -3,6 +3,7 @@ import http from 'node:http';
 
 const PORT = 9507;
 const SESSION = `x${Date.now() % 10000}`;
+const OTHER = `${SESSION}-new`;
 const DEVICE_TOKEN = process.env.DEVICE_TOKEN || 'e2e-token';
 let slow = false;
 
@@ -17,9 +18,9 @@ const model = http.createServer((req, res) => {
 });
 await new Promise((r) => model.listen(9612, '127.0.0.1', r));
 
-function client(device, authToken = '') {
+function client(device, authToken = '', session = SESSION) {
   const headers = device === 'desktop' ? { authorization: `Bearer ${DEVICE_TOKEN}` } : {};
-  const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws?session=${SESSION}&device=${device}${authToken ? `&authToken=${authToken}` : ''}`, { headers });
+  const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws?session=${session}&device=${device}${authToken ? `&authToken=${authToken}` : ''}`, { headers });
   const messages = [];
   const ready = new Promise((r) => ws.addEventListener('open', r));
   ws.addEventListener('message', (e) => messages.push(JSON.parse(e.data)));
@@ -74,4 +75,37 @@ slow = false;
 console.log('再发:', (await request(web, 'i', 'messages.send', { id: sid, text: '继续' })).ok);
 await wait(1500);
 console.log('最终事件:', web.messages.filter((m) => m.type === 'agent.event' && m.data?.session_id === sid).map((m) => `${m.data.type}${m.data.status ? ':' + m.data.status : ''}`).slice(-3));
+
+// 5. 电脑端换到新 session 后，旧 session 的网页碰不到云端数据；换回来又能用
+const moved = client('desktop', '', OTHER);
+await moved.ready;
+await wait(300);
+console.log('电脑端换 session 后旧链接:', (await request(web, 'j', 'sessions.list', {})).error);
+moved.ws.close();
+const back = client('desktop');
+await back.ready;
+await wait(300);
+console.log('电脑端换回来后旧链接:', (await request(web, 'k', 'sessions.list', {})).ok);
+
+// 6. 换密码：之前发出的免密令牌作废，已登录的网页要重新输密码
+back.send('auth.mode', { requiresPassword: true, fingerprint: 'old-password' });
+await wait(300);
+const login = client('web');
+await login.ready;
+await wait(300);
+const loginId = login.messages.find((m) => m.type === 'connection.ready')?.data.clientId;
+back.send('auth.grant', { clientId: loginId });
+await wait(300);
+const token = login.messages.find((m) => m.type === 'auth.state' && m.data?.sessionToken)?.data.sessionToken;
+const reuse = client('web', token);
+await reuse.ready;
+await wait(300);
+console.log('同一密码下令牌免登录:', reuse.messages.find((m) => m.type === 'connection.ready')?.data.authenticated);
+back.send('auth.mode', { requiresPassword: true, fingerprint: 'new-password' });
+await wait(300);
+console.log('换密码后已登录网页:', login.messages.filter((m) => m.type === 'auth.state').at(-1)?.data.authenticated);
+const stale = client('web', token);
+await stale.ready;
+await wait(300);
+console.log('换密码后旧令牌:', stale.messages.find((m) => m.type === 'connection.ready')?.data.authenticated);
 process.exit(0);

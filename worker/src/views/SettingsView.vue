@@ -79,10 +79,6 @@ const LABELS = {
     max_output: '工具输出上限',
 };
 
-async function copy(text) {
-    try { await navigator.clipboard.writeText(text); } catch {}
-}
-
 watch(() => ws.showActions, (online) => { if (online) load(); }, { immediate: true });
 </script>
 
@@ -224,12 +220,6 @@ watch(() => ws.showActions, (online) => { if (online) load(); }, { immediate: tr
                         <dd class="truncate text-right">
                             <a href="https://github.com/yanglongyun/roam" target="_blank" rel="noopener"
                                 class="text-emerald-400 hover:text-emerald-300">github.com/yanglongyun/roam</a>
-                        </dd>
-                        <dt class="text-zinc-500">微信</dt>
-                        <dd class="text-right">
-                            <button @click="copy('agentready')"
-                                class="font-mono text-zinc-200 hover:text-emerald-300 transition-colors"
-                                title="点击复制">agentready</button>
                         </dd>
                     </dl>
                 </section>

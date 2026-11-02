@@ -96,6 +96,23 @@ export async function publicConfig(env, config) {
   };
 }
 
+/* ───────────────────────── 当前 session ───────────────────────── */
+
+// 电脑端每次接入都把自己所在的 session 记成当前 session。
+export async function setActiveSession(env, session) {
+  await run(
+    env,
+    `INSERT INTO active (id, session, updated_at) VALUES (1, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET session = excluded.session, updated_at = excluded.updated_at`,
+    [session, Date.now()],
+  );
+}
+
+export async function activeSession(env) {
+  const row = await one(env, 'SELECT session FROM active WHERE id = 1');
+  return row?.session || '';
+}
+
 /* ───────────────────────── 设备 ───────────────────────── */
 
 // 设备每次连上来都刷新一次环境快照，云端拼提示词、判在线都用这张表。

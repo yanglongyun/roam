@@ -26,7 +26,8 @@
 - API Key 用 `SETTINGS_KEY` 加密后存 D1，只在 DO 里解密使用；模型请求从 Worker 发出，电脑端只收 `tool.call`。
 - 电脑端接入要带 `Authorization: Bearer <DEVICE_TOKEN>`，Worker 在转给 DO 之前校验，不对就 401。电脑端能免密码、能放行网页，D1 又是全局的，这道校验不能去掉。
 - R2（绑定名 `IMAGES`）是可选的：开通 R2 要绑卡，开源用户多半没有。没绑时 `status.get` 返回 `images: false`，前端隐藏发图按钮，上传和带图发送直接报错，工具截图换成一句文字说明，提示词里也会告诉模型看不到图；历史里取不到的图片在发给模型时换成 `[图片不可用]`，不让整次请求失败。
-- D1 是整个部署共用的（一个部署 = 一个用户），不按 session 隔离；没设密码时 session id 就是唯一凭据，旧 session 的链接也能看到全部对话。
+- D1 是整个部署共用的（一个部署 = 一个用户），不按 session 隔离。所以电脑端接入时 DO 把自己的 session 名写进 D1 的 `active` 表，网页的 `agent.request` 只在本 DO 就是当前 session 时放行；旧 session 的链接和免密令牌一律拒绝（DO 的 session 名从连接 URL 取，存在 DO storage 里）。
+- 电脑端 `auth.mode` 带密码指纹 `fingerprint`（HMAC，不是密码本身）；DO 发现指纹变了就清掉所有免密令牌、把已登录网页打回未认证。
 - 界面：右上角宫格是应用中心（助理 / 终端 / 文件 / 状态 / 屏幕 / 设置），默认进助理；左上角汉堡菜单随应用变化（助理=对话列表，终端=终端列表）。
 
 ## 命令
@@ -39,6 +40,6 @@
 
 ## 注意
 
-- 部署 Worker 前确认 `wrangler.jsonc` 的 `account_id` 是 woodchange 账号；D1 `roam`、R2 `roam` 已建，表已建（`schema.sql` 全是 `IF NOT EXISTS`，改了结构再跑一遍）。
+- 部署 Worker 前确认 `wrangler.jsonc` 的 `account_id` 是要部署的账号；D1 `roam`、R2 `roam` 已建，表已建（`schema.sql` 全是 `IF NOT EXISTS`，改了结构再跑一遍）。
 - Worker secret：`SETTINGS_KEY`（加密 API Key，改了之前存的 Key 就解不开）、`DEVICE_TOKEN`（本机 `computer/config.js` 里是同一个值）。
 - 不提交 `node_modules`、`.wrangler`、本地配置和凭据。

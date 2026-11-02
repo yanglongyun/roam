@@ -1,7 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { callOp } from "./agent/api.js";
 import { DeviceBridge } from "./agent/rpc.js";
-import { loadConfig, upsertDevice } from "./agent/store.js";
+import { activeSession, loadConfig, setActiveSession, upsertDevice } from "./agent/store.js";
 import { readImage } from "./agent/images.js";
 
 function socketId() {
@@ -28,6 +28,8 @@ export class TerminalSessionManager extends DurableObject {
         super(ctx, env);
         this.requiresPassword = true;
         this.authTokens = new Map();  // token -> expiresAt
+        this.authFingerprint = null;  // 电脑端密码的指纹，变了就作废所有免密令牌
+        this.sessionName = '';        // 这个对象对应的 session（idFromName 用的名字）
         // agent 运行态：配置缓存、正在回复的会话、等设备回话的工具调用。
         this.configCache = null;
         this.runs = new Map();        // sessionId -> { controller, done, text, reasoning, runImages }
@@ -36,6 +38,12 @@ export class TerminalSessionManager extends DurableObject {
         this.ctx.blockConcurrencyWhile(async () => {
             const v = await this.ctx.storage.get('requiresPassword');
             if (typeof v === 'boolean') this.requiresPassword = v;
+
+            const fingerprint = await this.ctx.storage.get('authFingerprint');
+            if (typeof fingerprint === 'string') this.authFingerprint = fingerprint;
+
+            const name = await this.ctx.storage.get('sessionName');
+            if (typeof name === 'string') this.sessionName = name;
 
             const tokens = await this.ctx.storage.get('authTokens');
             if (tokens && typeof tokens === 'object') {
@@ -102,6 +110,17 @@ export class TerminalSessionManager extends DurableObject {
         const device = url.searchParams.get('device');
         if (device !== 'desktop' && device !== 'web') {
             return new Response('Missing or invalid device param', { status: 400 });
+        }
+
+        const session = url.searchParams.get('session') || '';
+        if (session && session !== this.sessionName) {
+            this.sessionName = session;
+            await this.ctx.storage.put('sessionName', session);
+        }
+        // 电脑端接到哪个 session，哪个 session 就是当前 session，旧 session 从此碰不到云端数据。
+        if (device === 'desktop' && this.sessionName) {
+            await setActiveSession(this.env, this.sessionName)
+                .catch((error) => console.error('记录当前 session 失败：', error.message));
         }
 
         const pair = new WebSocketPair();
@@ -216,11 +235,19 @@ export class TerminalSessionManager extends DurableObject {
         if (msg.type === 'auth.mode') {
             this.requiresPassword = Boolean(msg.data?.requiresPassword);
             this.ctx.storage.put('requiresPassword', this.requiresPassword).catch(() => {});
+            // 密码换了（或第一次知道指纹）：之前发出的免密令牌全部作废，已登录的网页重新输密码。
+            const fingerprint = String(msg.data?.fingerprint || '');
+            const revoked = fingerprint !== this.authFingerprint;
+            if (revoked) {
+                this.authFingerprint = fingerprint;
+                this.ctx.storage.put('authFingerprint', fingerprint).catch(() => {});
+                this.clearAllAuthTokens();
+            }
             for (const ws of this.ctx.getWebSockets('web')) {
                 const att = ws.deserializeAttachment() || {};
                 if (!this.requiresPassword) {
                     ws.serializeAttachment({ ...att, authenticated: true });
-                } else if (!att.authenticated) {
+                } else if (revoked || !att.authenticated) {
                     ws.serializeAttachment({ ...att, authenticated: false });
                 }
                 this.broadcastAuthState(ws);
@@ -336,6 +363,10 @@ export class TerminalSessionManager extends DurableObject {
         if (att.device === 'web' && !att.authenticated) {
             this.broadcastAuthState(ws, '请先输入访问密码');
             reply({ ok: false, error: '请先输入访问密码' });
+            return;
+        }
+        if (att.device === 'web' && (!this.sessionName || this.sessionName !== await activeSession(this.env))) {
+            reply({ ok: false, error: '这个链接已失效：电脑端已换到新的会话，请打开电脑端控制台打印的新地址' });
             return;
         }
         try {

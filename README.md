@@ -111,7 +111,7 @@ cp config.example.js config.js
 export default {
     CLOUDFLARE_WORKER_URL: 'https://roam.example.workers.dev',
     DEVICE_TOKEN: '',        // 和 Worker 的 DEVICE_TOKEN secret 一致
-    SESSION_ID: '',          // 留空则每次启动随机生成
+    SESSION_ID: '',          // 留空则每次启动随机生成;要固定就用 16 位以上的随机串
     SESSION_PASSWORD: '',    // 留空则不要密码
     DEBUG: '0',
 };
@@ -173,14 +173,14 @@ agent 可用的工具:
 caffeinate -dimsu node /path/to/roam/computer/index.js
 ```
 
-**长期(开机自启,崩了自动拉起):** 用 launchd。新建 `~/Library/LaunchAgents/me.meeem.roam.plist`:
+**长期(开机自启,崩了自动拉起):** 用 launchd。新建 `~/Library/LaunchAgents/roam.computer.plist`:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>Label</key><string>me.meeem.roam</string>
+    <key>Label</key><string>roam.computer</string>
     <key>ProgramArguments</key>
     <array>
         <string>/usr/local/bin/node</string>
@@ -198,8 +198,8 @@ caffeinate -dimsu node /path/to/roam/computer/index.js
 加载:
 
 ```bash
-launchctl load ~/Library/LaunchAgents/me.meeem.roam.plist
-launchctl unload ~/Library/LaunchAgents/me.meeem.roam.plist  # 卸载
+launchctl load ~/Library/LaunchAgents/roam.computer.plist
+launchctl unload ~/Library/LaunchAgents/roam.computer.plist  # 卸载
 ```
 
 `which node` 看下你的 node 路径,nvm 装的话写 nvm 实际路径。Roam 在 macOS / Linux
@@ -275,8 +275,10 @@ node tests/extra.mjs   # 密码拦截、运行中停止
 - 终端输出、文件内容、屏幕截图只经 Worker 中继,不落地
 - 助理的对话、设置存在你自己账号的 D1,图片存在 R2(可选);API Key 用 `SETTINGS_KEY` 加密保存,只在 Worker 里解密
 - 只有带对 `DEVICE_TOKEN` 的电脑端能接入;访问密码由电脑端校验
-- 助理能执行任意命令、读写文件、操作浏览器,权限等同于远程终端;务必设置 `SESSION_PASSWORD`
-- 不设密码时,session id 就是唯一凭据,拿到链接的人能看到全部对话;用过的 session 链接即使电脑端已经换了 session 也依然有效
+- 只有电脑端当前连着的 session 能读写助理数据;电脑端换了 session,旧链接和旧链接里的登录状态都碰不到云端数据
+- 登录后 30 天内免密码;换了 `SESSION_PASSWORD`,之前的免密登录全部作废,已打开的网页要重新输密码
+- 助理能执行任意命令、读写文件、操作浏览器,权限等同于远程终端;务必设置 `SESSION_PASSWORD`,固定的 `SESSION_ID` 也用足够长的随机串
+- 不设密码时,session id 就是唯一凭据,拿到链接的人能看到全部对话
 - 不要把真实 `computer/config.js` 和 `worker/wrangler.jsonc` 提交到仓库
 
 ## License
