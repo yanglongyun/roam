@@ -1,5 +1,5 @@
 <script setup>
-// 助理设置（字段与 agentic 一致），保存在电脑端 ~/.roam/agent/config.json。
+// 助理设置，存在云端 D1（API Key 加密保存）；工具由电脑端执行。
 import { computed, reactive, ref, watch } from 'vue';
 import { useAgentStore } from '@/stores/agent';
 import { useWsStore } from '@/stores/ws';
@@ -91,7 +91,7 @@ watch(() => ws.showActions, (online) => { if (online) load(); }, { immediate: tr
         <main class="flex-1 min-h-0 overflow-y-auto px-4 py-4">
             <div class="mx-auto w-full max-w-2xl space-y-4">
                 <div v-if="!ws.showActions" class="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4 text-sm text-zinc-500">
-                    未连接电脑端，无法读写助理设置。
+                    未连接云端，无法读写助理设置。
                 </div>
                 <div v-else-if="loadError" class="rounded-lg border border-red-900/50 bg-red-950/30 p-4 text-sm text-red-300">
                     {{ loadError }}
@@ -122,7 +122,7 @@ watch(() => ws.showActions, (online) => { if (online) load(); }, { immediate: tr
                             <label class="block">
                                 <span class="field-k">系统提示词</span>
                                 <textarea class="field" v-model="form.system" rows="6" spellcheck="false"></textarea>
-                                <span class="field-note" v-pre>支持变量 {{os}} {{arch}} {{host}} {{user}} {{workdir}} {{time}}。</span>
+                                <span class="field-note" v-pre>支持变量 {{os}} {{arch}} {{host}} {{user}} {{workdir}} {{time}} {{device_status}}，环境信息来自电脑端上次连接时的登记。</span>
                             </label>
                         </div>
                     </section>
@@ -185,6 +185,20 @@ watch(() => ws.showActions, (online) => { if (online) load(); }, { immediate: tr
                     </div>
 
                     <section class="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
+                        <h3 class="mb-3 text-xs font-semibold uppercase tracking-wider text-zinc-500">电脑端</h3>
+                        <div class="text-sm">
+                            <span class="text-zinc-500">状态：</span>
+                            <span :class="agent.status?.device_online ? 'text-emerald-400' : 'text-zinc-400'">
+                                {{ agent.status?.device_online ? '已连接' : '未连接，工具暂不可用' }}
+                            </span>
+                        </div>
+                        <div v-if="agent.status?.device" class="mt-2 text-xs leading-relaxed text-zinc-500">
+                            <div class="truncate">{{ agent.status.device.name || agent.status.device.host }}</div>
+                            <div class="truncate font-mono">{{ agent.status.device.workdir }}</div>
+                        </div>
+                    </section>
+
+                    <section class="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
                         <h3 class="mb-3 text-xs font-semibold uppercase tracking-wider text-zinc-500">浏览器插件</h3>
                         <p class="text-xs leading-relaxed text-zinc-500">
                             在 Chrome / Edge 打开扩展程序页，开启开发者模式，「加载已解压的扩展程序」选仓库里的 <code class="font-mono">extension/</code>。
@@ -198,19 +212,18 @@ watch(() => ws.showActions, (online) => { if (online) load(); }, { immediate: tr
                         </div>
                     </section>
 
-                    <p class="px-1 text-xs text-zinc-600">数据目录：<code class="font-mono">{{ config.paths.data_dir }}</code></p>
                 </template>
 
                 <section class="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
                     <h3 class="mb-3 text-xs font-semibold uppercase tracking-wider text-zinc-500">关于</h3>
-                    <p class="text-xs leading-relaxed text-zinc-500">本项目把本机终端 / 文件 / 屏幕 / AI 助理带到任意浏览器,Worker 只做中继,数据不落地。</p>
+                    <p class="text-xs leading-relaxed text-zinc-500">本项目把本机终端 / 文件 / 屏幕带到任意浏览器；AI 助理的会话、消息和配置存在云端 D1 / R2，工具调用转发到你的电脑执行。</p>
                     <dl class="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
                         <dt class="text-zinc-500">连接</dt>
                         <dd class="truncate text-right text-zinc-100">{{ ws.statusText }}</dd>
                         <dt class="text-zinc-500">项目</dt>
                         <dd class="truncate text-right">
-                            <a href="https://github.com/valueriver/roam" target="_blank" rel="noopener"
-                                class="text-emerald-400 hover:text-emerald-300">github.com/valueriver/roam</a>
+                            <a href="https://github.com/yanglongyun/roam" target="_blank" rel="noopener"
+                                class="text-emerald-400 hover:text-emerald-300">github.com/yanglongyun/roam</a>
                         </dd>
                         <dt class="text-zinc-500">微信</dt>
                         <dd class="text-right">

@@ -5,7 +5,7 @@
   "type": "module",
   "main": "index.js",
   "engines": {
-    "node": ">=22.13"
+    "node": ">=22"
   },
   "scripts": {
     "start": "node index.js"

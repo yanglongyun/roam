@@ -9,8 +9,15 @@
  *        不绑就把整个 "routes" 段删掉,Worker 会自动给一个
  *        roam.<your-subdomain>.workers.dev 的测试地址。
  *
- * Worker 自身是无状态中继 — 不需要 D1 / R2 / KV 任何存储。
- * 所有真实数据都在桌面端 ~/.roam/roam.db 的 SQLite 里。
+ * 数据都在云端:会话 / 消息 / 配置 / 设备登记进 D1,图片进 R2。
+ * 先在控制台(或 wrangler d1 create / r2 bucket create)建好这两样,
+ * 再把下面的 database_id 和 bucket_name 换成自己的:
+ *   npx wrangler d1 create roam
+ *   npx wrangler r2 bucket create roam
+ *   npx wrangler d1 execute roam --remote --file=server/agent/schema.sql
+ *   npx wrangler secret put SETTINGS_KEY    # 用来加密存 API Key
+ *   npx wrangler secret put DEVICE_TOKEN    # 电脑端接入凭据，computer/config.js 填同一个值
+ * 两个值都用随机串，比如 openssl rand -base64 32。
  */
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
@@ -23,6 +30,19 @@
 		"binding": "ASSETS",
 		"not_found_handling": "single-page-application"
 	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "roam",
+			"database_id": "<YOUR_D1_DATABASE_ID>"
+		}
+	],
+	"r2_buckets": [
+		{
+			"binding": "IMAGES",
+			"bucket_name": "roam"
+		}
+	],
 	"durable_objects": {
 		"bindings": [
 			{

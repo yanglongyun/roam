@@ -12,7 +12,7 @@ import path from 'node:path';
 const TIMEOUT_MS = 30_000;
 
 /** 返回 browser 工具用的 { request(action, args, signal), connected(), close() }。 */
-export function startBrowser({ address, log = console.log }) {
+export function startBrowser({ address, log = console.log, onChange = () => {} }) {
     const sockets = [];
     const pending = new Map();
 
@@ -43,9 +43,11 @@ export function startBrowser({ address, log = console.log }) {
         socket.on('close', () => {
             sockets.splice(sockets.indexOf(socket), 1);
             log('🧩 浏览器插件已断开');
+            onChange(sockets.length > 0);
         });
         socket.on('error', () => {});
         log('🧩 浏览器插件已连接');
+        onChange(true);
     });
     server.on('error', (error) => log('🧩 浏览器管道不可用:', error.message, address));
     // 上次异常退出可能留下 socket 文件,监听前先删掉

@@ -21,18 +21,3 @@ export async function saveImage(directory, bytes, extension, signal) {
   }
   return `/api/images/${name}`;
 }
-
-export async function readImage(directory, name, signal) {
-  // 图片地址只能指向图片目录中的 UUID 文件，不能传入任意文件路径。
-  if (
-    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(png|jpe?g|gif|webp)$/.test(
-      name,
-    )
-  ) {
-    const error = new Error("图片地址无效");
-    error.code = "ENOENT";
-    throw error;
-  }
-  const bytes = await fs.readFile(path.join(directory, name), { signal });
-  return { type: imageTypes[path.extname(name)], bytes };
-}

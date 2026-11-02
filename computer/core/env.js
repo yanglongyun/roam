@@ -88,12 +88,24 @@ if (SESSION_ID === 'default') {
 const SESSION_PASSWORD = String(resolveValue('SESSION_PASSWORD', [dotEnvValues, configValues]) || '').trim();
 const DEBUG = String(resolveValue('DEBUG', [dotEnvValues, configValues]) || '0').trim() === '1';
 
-export { CLOUDFLARE_WORKER_URL, SERVER_URL, WEB_URL, SESSION_ID, SESSION_PASSWORD, DEBUG };
+// 和 Worker 的 DEVICE_TOKEN secret 一致，Worker 凭它认出这台电脑。
+const DEVICE_TOKEN = String(resolveValue('DEVICE_TOKEN', [dotEnvValues, configValues]) || '').trim();
+if (!DEVICE_TOKEN) {
+    console.error('缺少 DEVICE_TOKEN 配置（要和 Worker 的 DEVICE_TOKEN secret 一致）');
+    console.error('请在以下任一位置设置:');
+    console.error(`  - ${configPath}`);
+    console.error(`  - ${envPath}`);
+    console.error('  - 环境变量 DEVICE_TOKEN');
+    process.exit(1);
+}
+
+export { CLOUDFLARE_WORKER_URL, SERVER_URL, WEB_URL, SESSION_ID, SESSION_PASSWORD, DEVICE_TOKEN, DEBUG };
 export default {
     CLOUDFLARE_WORKER_URL,
     SERVER_URL,
     WEB_URL,
     SESSION_ID,
     SESSION_PASSWORD,
+    DEVICE_TOKEN,
     DEBUG,
 };

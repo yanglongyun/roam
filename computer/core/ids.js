@@ -1,5 +1,8 @@
+import { randomBytes } from 'node:crypto';
+
+// 会话 ID 在没设密码时就是访问云端对话的唯一凭据，用足够长的随机值。
 function generateSessionId() {
-    return Math.random().toString(36).slice(2, 8);
+    return randomBytes(9).toString('base64url');
 }
 
 function generateTerminalId() {

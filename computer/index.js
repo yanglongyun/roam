@@ -8,7 +8,7 @@ import agent from './services/agent/index.js';
 async function boot() {
     console.log('🚀 正在启动 Roam Computer...');
 
-    // 助理：本机数据库、配置，以及浏览器插件的本机管道
+    // 助理：只留工具执行和浏览器管道，对话与数据都在云端
     agent.start();
 
     guard.bindOnGrant((clientId) => {
@@ -28,6 +28,7 @@ async function boot() {
         onOpen: () => {
             guard.sendAuthMode();
             terminal.sendSnapshotAll();
+            agent.report();
         },
         onMessage: (msg) => router.dispatch(msg),
     });

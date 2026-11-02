@@ -1,49 +1,43 @@
-// 助理（agentic 的 agent）接到 Roam 上。
-// 网页的操作走 agent.request（经 Worker 中继），结果回给发起的网页端：agent.result { reqId, ok, data | status + error }。
-// Agent 的九种事件补上 session_id 后经 agent.event 推给所有网页端，只往下推。
+// 设备端执行器：模型、对话和 SQL 都在云端，这里只负责把工具调用跑在这台电脑上。
+// 云端发 tool.call { call_id, name, arguments }，这里回 tool.result { call_id, result }；
+// 结果里的图片（read 截图等）先落本地临时文件，转成 base64 一起带上去。
+import os from 'node:os';
 import path from 'node:path';
+import fs from 'node:fs/promises';
 import ws from '../../ws.js';
-import { paths, loadConfig } from './config.js';
-import openDB from './db.js';
+import { paths, defaults } from './config.js';
+import { imageTypes } from './images.js';
 import { startBrowser } from './browser/bridge.js';
 import { registerHost } from './browser/register-host.js';
-import * as sessions from './ops/sessions.js';
-import * as messages from './ops/messages.js';
-import * as images from './ops/images.js';
-import * as config from './ops/config.js';
-
-const ops = {
-    'sessions.list': sessions.list,
-    'sessions.create': sessions.create,
-    'sessions.open': sessions.open,
-    'sessions.patch': sessions.patch,
-    'sessions.pins': sessions.pins,
-    'sessions.delete': sessions.remove,
-    'messages.list': messages.list,
-    'messages.send': messages.send,
-    'run.stop': messages.stop,
-    'images.upload': images.upload,
-    'images.get': images.get,
-    'config.get': config.get,
-    'config.put': config.put,
-    status: config.status,
-};
+import runTool from './agent/runner.js';
 
 let context = null;
 
-function start() {
+// browser=false 时不连浏览器插件（测试和纯 CLI 场景用）。
+function start({ browser = true } = {}) {
     const p = paths();
+    const local = defaults();
     context = {
         paths: p,
-        config: loadConfig(p),
-        db: openDB(p.db),
-        // 正在运行的回复：会话 ID → { controller, done, text, reasoning }
-        runs: new Map(),
-        browser: startBrowser({ address: p.browser }),
-        publish(sessionId, event) {
-            ws.broadcast('agent.event', { ...event, session_id: sessionId });
+        browser: browser
+            ? startBrowser({ address: p.browser, onChange: () => report() })
+            : {
+                request: async () => { throw new Error('浏览器插件未启用'); },
+                connected: () => false,
+                close() {},
+            },
+        // 工具执行用的本地参数：工具读写的目录、超时和输出上限都是这台电脑的事。
+        toolConfig: {
+            workdir: local.workdir || os.homedir(),
+            timeout: Number.isSafeInteger(local.timeout) ? local.timeout : 120,
+            max_output: Number.isSafeInteger(local.max_output) ? local.max_output : 30000,
+            images_dir: p.images,
+            run_images: null,
         },
+        // 退出时用它取消所有还在跑的工具，别让 shell 卡住进程。
+        controller: new AbortController(),
     };
+    if (!browser) return;
     try {
         const browsers = registerHost({ dir: path.join(p.root, 'native-host'), socket: p.browser });
         if (browsers.length) console.log(`🧩 浏览器插件宿主已登记：${browsers.join('、')}`);
@@ -52,41 +46,91 @@ function start() {
     }
 }
 
-async function handle(message) {
-    if (message.type !== 'agent.request') return false;
-    const { reqId, op, args } = message.data || {};
-    const clientId = message.meta?.clientId || null;
-    const reply = (data) => {
-        if (clientId) ws.sendToClient(clientId, 'agent.result', { reqId, ...data });
-        else ws.broadcast('agent.result', { reqId, ...data });
-    };
-    const fn = ops[op];
-    if (!fn) {
-        reply({ ok: false, status: 404, error: `未知操作：${op}` });
-        return true;
-    }
+// 连上后告诉云端这台电脑是谁、能从哪里开始干活，会话列表和系统提示都要用。
+function report() {
+    if (!context) return;
+    ws.send({
+        type: 'device.report',
+        to: 'desktop',
+        data: {
+            id: 'desktop',
+            name: `${os.userInfo().username} 的 ${os.type() === 'Darwin' ? 'Mac' : os.hostname()}`,
+            platform: process.platform,
+            arch: process.arch,
+            host: os.hostname(),
+            username: os.userInfo().username,
+            workdir: context.toolConfig.workdir,
+            browser: context.browser.connected(),
+        },
+    });
+}
+
+// 图片工具返回的是本地 /api/images/<name>，云端读不到，读成 base64 带上去。
+async function attachImage(result) {
+    const name = typeof result.imageURL === 'string' ? result.imageURL.split('/').pop() : '';
+    const type = imageTypes[path.extname(name)];
+    if (!type) return { text: result.text, failed: Boolean(result.failed) };
+    const file = path.join(context.paths.images, name);
     try {
-        reply({ ok: true, data: await fn(context, args || {}) });
+        const bytes = await fs.readFile(file);
+        return {
+            text: result.text,
+            failed: Boolean(result.failed),
+            image: { base64: bytes.toString('base64'), mime: type },
+        };
     } catch (error) {
-        if (!error.status) console.error(`助理操作失败 [${op}]:`, error.message || error);
-        reply({ ok: false, status: error.status || 500, error: error.message || String(error) });
+        return { text: `${result.text}\n（图片读取失败：${error.message}）`, failed: true };
+    } finally {
+        // 云端会存进 R2，本地这份不用留。
+        await fs.rm(file, { force: true });
     }
+}
+
+// 云端带下来的运行参数；坏值一律忽略，保住本机默认。
+function pickSettings(config) {
+    if (!config || typeof config !== 'object') return {};
+    const next = {};
+    const workdir = typeof config.workdir === 'string' ? config.workdir.trim() : '';
+    if (workdir) next.workdir = workdir;
+    for (const key of ['timeout', 'max_output']) {
+        const value = config[key];
+        if (Number.isSafeInteger(value) && value > 0) next[key] = value;
+    }
+    return next;
+}
+
+// 跑一次工具，返回可以直接塞进 tool.result 的载荷（图片转成 base64）。
+async function execute({ name, arguments: args, config } = {}) {
+    let result;
+    try {
+        result = await runTool(
+            { name, arguments: JSON.stringify(args ?? {}) },
+            // 云端设置覆盖本地默认值；工作目录留空就用这台电脑的用户目录。
+            { ...context.toolConfig, ...pickSettings(config) },
+            context.controller.signal,
+        );
+    } catch (error) {
+        result = { text: error.message, failed: true };
+    }
+    if (!result.imageURL) return { text: result.text, failed: Boolean(result.failed) };
+    return attachImage(result);
+}
+
+async function handle(message) {
+    if (message.type !== 'tool.call') return false;
+    const { call_id: callId } = message.data || {};
+    if (!callId) return true;
+    const result = await execute(message.data);
+    ws.send({ type: 'tool.result', to: 'desktop', data: { call_id: callId, result } });
     return true;
 }
 
-// 退出前停掉正在运行的回复，让它们补写工具结果、推送 done。
 async function shutdown() {
     if (!context) return;
-    const pending = [];
-    for (const run of context.runs.values()) {
-        run.controller.abort(new DOMException('已停止', 'AbortError'));
-        if (run.done) pending.push(run.done);
-    }
-    await Promise.allSettled(pending);
+    context.controller.abort(new DOMException('已关闭', 'AbortError'));
     context.browser.close();
-    context.db.close();
     context = null;
 }
 
-export { start, handle, shutdown };
-export default { start, handle, shutdown };
+export { start, execute, handle, report, shutdown };
+export default { start, execute, handle, report, shutdown };

@@ -9,6 +9,8 @@ export const useWsStore = defineStore('ws', () => {
     const state = ref('pending');
     const statusText = ref('连接中...');
     const showActions = ref(false);
+    // 电脑端（设备）是否在线：会话和模型在云端，工具要靠它。
+    const desktopOnline = ref(false);
     const invalid = ref(false);
     const authenticated = ref(false);
     const requiresPassword = ref(false);
@@ -180,26 +182,18 @@ export const useWsStore = defineStore('ws', () => {
                     challengeNonce = String(msg.data.nonce);
                 }
                 if (msg.type === 'connection.devices' && msg.data?.devices) {
-                    const d = msg.data.devices;
-                    if (d.desktop === 'connected') {
-                        state.value = 'connected';
-                        statusText.value = '远程已连接';
-                        disconnectedSince.value = 0;
-                        disconnectGraceExpired.value = false;
-                        clearTimeout(disconnectGraceTimer);
-                        showActions.value = authenticated.value || !requiresPassword.value;
-                        if (!authenticated.value && requiresPassword.value && !challengeNonce) {
-                            requestChallenge();
-                        }
-                    } else {
-                        state.value = 'pending';
-                        statusText.value = '等待客户端连接...';
-                        showActions.value = false;
-                    }
+                    desktopOnline.value = msg.data.devices.desktop === 'connected';
+                    statusText.value = desktopOnline.value ? '电脑端已连接' : '电脑端未连接';
                 }
                 if (msg.type === 'auth.state' || msg.type === 'connection.ready') {
-                    showActions.value = state.value === 'connected' && (authenticated.value || !requiresPassword.value);
-                    if (!authenticated.value && requiresPassword.value && !challengeNonce && !authClosed.value && state.value === 'connected') {
+                    // 连上云端就能用：对话、配置、消息都在云端，电脑端只负责执行工具。
+                    state.value = 'connected';
+                    statusText.value = desktopOnline.value ? '电脑端已连接' : '电脑端未连接';
+                    disconnectedSince.value = 0;
+                    disconnectGraceExpired.value = false;
+                    clearTimeout(disconnectGraceTimer);
+                    showActions.value = authenticated.value || !requiresPassword.value;
+                    if (!authenticated.value && requiresPassword.value && !challengeNonce && !authClosed.value) {
                         requestChallenge();
                     }
                 }
@@ -211,6 +205,7 @@ export const useWsStore = defineStore('ws', () => {
 
         ws.onclose = (event) => {
             state.value = 'offline';
+            desktopOnline.value = false;
             challengeNonce = '';
             lastChallengeReqAt = 0;
             if (event?.code === 4003 || authClosed.value) {
@@ -264,7 +259,7 @@ export const useWsStore = defineStore('ws', () => {
     }
 
     return {
-        sessionId, clientId, state, statusText, showActions, invalid,
+        sessionId, clientId, state, statusText, showActions, desktopOnline, invalid,
         authenticated, requiresPassword, authError, authClosed, superseded,
         disconnectedSince, isReconnecting, connectionLost, canUseActions,
         init, sendMsg, onMessage, submitPassword,

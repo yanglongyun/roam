@@ -1,7 +1,26 @@
 import { DurableObject } from "cloudflare:workers";
+import { callOp } from "./agent/api.js";
+import { DeviceBridge } from "./agent/rpc.js";
+import { loadConfig, upsertDevice } from "./agent/store.js";
+import { readImage } from "./agent/images.js";
 
 function socketId() {
     return crypto.randomUUID();
+}
+
+// 电脑端连上来要带 DEVICE_TOKEN：电脑端能免密码、能放行网页，
+// 云端又存着对话和 API Key，不校验的话谁都能冒充电脑端把数据读走。
+async function deviceTokenValid(request, env) {
+    const expected = env.DEVICE_TOKEN || '';
+    const header = request.headers.get('authorization') || '';
+    const given = header.startsWith('Bearer ') ? header.slice(7) : '';
+    if (!expected || !given) return false;
+    const encoder = new TextEncoder();
+    const [a, b] = await Promise.all([
+        crypto.subtle.digest('SHA-256', encoder.encode(expected)),
+        crypto.subtle.digest('SHA-256', encoder.encode(given)),
+    ]);
+    return crypto.subtle.timingSafeEqual(a, b);
 }
 
 export class TerminalSessionManager extends DurableObject {
@@ -9,6 +28,11 @@ export class TerminalSessionManager extends DurableObject {
         super(ctx, env);
         this.requiresPassword = true;
         this.authTokens = new Map();  // token -> expiresAt
+        // agent 运行态：配置缓存、正在回复的会话、等设备回话的工具调用。
+        this.configCache = null;
+        this.runs = new Map();        // sessionId -> { controller, done, text, reasoning, runImages }
+        this.bridge = new DeviceBridge();
+        this.interrupted = [];        // 上次被平台中断的会话，等前端连上再补 done
         this.ctx.blockConcurrencyWhile(async () => {
             const v = await this.ctx.storage.get('requiresPassword');
             if (typeof v === 'boolean') this.requiresPassword = v;
@@ -21,6 +45,14 @@ export class TerminalSessionManager extends DurableObject {
                         this.authTokens.set(tok, exp);
                     }
                 }
+            }
+
+            // 回复中途对象被回收的话，done 永远发不出去，前端会一直显示“正在回复”。
+            // 这里清掉残留标记，等前端连上后补一条中断提示。
+            const stale = await this.ctx.storage.list({ prefix: 'run:' });
+            if (stale.size) {
+                this.interrupted = [...stale.keys()].map((key) => key.slice(4));
+                await this.ctx.storage.delete([...stale.keys()]);
             }
         });
     }
@@ -98,6 +130,7 @@ export class TerminalSessionManager extends DurableObject {
 
         this.broadcastDeviceStatus();
         this.broadcastAuthState(server);
+        if (device === 'web' && authenticated) this.flushInterrupted();
 
         return new Response(null, { status: 101, webSocket: client });
     }
@@ -119,6 +152,25 @@ export class TerminalSessionManager extends DurableObject {
                 to: att.device,
                 data: {},
             }));
+            return;
+        }
+
+        if (msg.type === 'tool.result' && att.device === 'desktop') {
+            this.bridge.settle(msg.data);
+            return;
+        }
+
+        if (msg.type === 'device.report' && att.device === 'desktop') {
+            const { id, name, platform, arch, host, username, workdir, browser } = msg.data || {};
+            if (id) {
+                upsertDevice(this.env, { id, name, platform, arch, host, username, workdir, browser })
+                    .catch((error) => console.error('登记设备失败：', error.message));
+            }
+            return;
+        }
+
+        if (msg.type === 'agent.request') {
+            this.handleAgentRequest(ws, msg, att);
             return;
         }
 
@@ -148,7 +200,11 @@ export class TerminalSessionManager extends DurableObject {
         this.route(msg);
     }
 
-    async webSocketClose() {
+    async webSocketClose(ws) {
+        const att = ws.deserializeAttachment() || {};
+        if (att.device === 'desktop' && !this.ctx.getWebSockets('desktop').length) {
+            this.bridge.drain();
+        }
         this.broadcastDeviceStatus();
     }
 
@@ -244,6 +300,98 @@ export class TerminalSessionManager extends DurableObject {
         }
     }
 
+    /* ───────────── agent：云端接管，前端协议保持不变 ───────────── */
+
+    agentContext() {
+        return {
+            env: this.env,
+            runs: this.runs,
+            bridge: this.bridge,
+            config: async () => {
+                if (!this.configCache) this.configCache = await loadConfig(this.env);
+                return this.configCache;
+            },
+            invalidateConfig: () => { this.configCache = null; },
+            deviceOnline: () => this.ctx.getWebSockets('desktop').length > 0,
+            sendToDevice: (message) => this.sendToDevice(message),
+            publish: (sessionId, event) => this.publishEvent(sessionId, event),
+            waitUntil: (promise) => this.ctx.waitUntil(promise),
+            runningIds: () => new Set(this.runs.keys()),
+            markRunning: (id) => {
+                this.ctx.storage.put(`run:${id}`, Date.now()).catch(() => {});
+                this.keepAlive();
+            },
+            markIdle: (id) => { this.ctx.storage.delete(`run:${id}`).catch(() => {}); },
+        };
+    }
+
+    async handleAgentRequest(ws, msg, att) {
+        const data = msg.data || {};
+        const reqId = data.reqId;
+        const reply = (payload) => {
+            try {
+                ws.send(JSON.stringify({ type: 'agent.result', to: 'web', data: { reqId, ...payload } }));
+            } catch {}
+        };
+        if (att.device === 'web' && !att.authenticated) {
+            this.broadcastAuthState(ws, '请先输入访问密码');
+            reply({ ok: false, error: '请先输入访问密码' });
+            return;
+        }
+        try {
+            const result = await callOp(this.agentContext(), data.op, data.args || {});
+            reply({ ok: true, data: result });
+        } catch (error) {
+            console.error(`agent ${data.op} 失败：`, error.message);
+            reply({ ok: false, error: error.message || '操作失败' });
+        }
+    }
+
+    publishEvent(sessionId, event) {
+        const payload = JSON.stringify({
+            type: 'agent.event',
+            to: 'web',
+            data: { session_id: sessionId, ...event },
+        });
+        for (const ws of this.ctx.getWebSockets('web')) {
+            const att = ws.deserializeAttachment() || {};
+            if (!att.authenticated) continue;
+            try { ws.send(payload); } catch {}
+        }
+    }
+
+    sendToDevice(message) {
+        const targets = this.ctx.getWebSockets('desktop');
+        if (!targets.length) return false;
+        try {
+            targets[0].send(JSON.stringify(message));
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    // 有回复在跑时定时给自己发 alarm：DO 长时间没有事件会被回收，alarm 相当于心跳。
+    keepAlive() {
+        this.ctx.storage.getAlarm()
+            .then((at) => { if (!at) return this.ctx.storage.setAlarm(Date.now() + 20 * 1000); })
+            .catch(() => {});
+    }
+
+    async alarm() {
+        if (this.runs.size) {
+            await this.ctx.storage.setAlarm(Date.now() + 20 * 1000);
+        }
+    }
+
+    flushInterrupted() {
+        if (!this.interrupted.length) return;
+        for (const sessionId of this.interrupted) {
+            this.publishEvent(sessionId, { type: 'done', status: 'incomplete', stopReason: 'interrupted' });
+        }
+        this.interrupted = [];
+    }
+
     findWebSocket(clientId) {
         for (const ws of this.ctx.getWebSockets('web')) {
             const att = ws.deserializeAttachment() || {};
@@ -324,9 +472,28 @@ export default {
             if (!sessionId || sessionId === 'default') {
                 return new Response('Missing session', { status: 400 });
             }
+            if (url.searchParams.get('device') === 'desktop' && !(await deviceTokenValid(request, env))) {
+                return new Response('Invalid device token', { status: 401 });
+            }
             const id = env.TERMINAL_SESSION_MANAGER.idFromName(sessionId);
             const stub = env.TERMINAL_SESSION_MANAGER.get(id);
             return stub.fetch(request);
+        }
+
+        // 图片短地址：前端主要走 images.get，这里给普通 HTTP 访问（复制链接、直接打开）留一条路。
+        if (url.pathname.startsWith('/api/images/')) {
+            const name = url.pathname.slice('/api/images/'.length);
+            try {
+                const image = await readImage(env, name);
+                return new Response(image.bytes, {
+                    headers: {
+                        'content-type': image.type,
+                        'cache-control': 'private, max-age=31536000, immutable',
+                    },
+                });
+            } catch (error) {
+                return new Response(error.message, { status: error.status || 404 });
+            }
         }
 
         return env.ASSETS.fetch(request);

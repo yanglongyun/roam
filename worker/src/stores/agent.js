@@ -1,5 +1,5 @@
 // 助理的会话状态。移植自 agentic 的 thread/store.ts：
-// 操作经 agent.request（Worker 中继到电脑端）请求、等 agent.result；Agent 的九种事件经 agent.event 推来。
+// 操作经 agent.request 发给 Worker（助理跑在云端），等 agent.result；回复过程经 agent.event 推来。
 import { defineStore } from 'pinia';
 import { ref, watch } from 'vue';
 import { useWsStore } from '@/stores/ws';
@@ -19,7 +19,7 @@ export const useAgentStore = defineStore('agent', () => {
     /** 列表还有更早的未置顶对话没加载。 */
     const threadsMore = ref(false);
     const loadingThreads = ref(false);
-    /** 置顶组的顺序（会话 ID），由电脑端保存。 */
+    /** 置顶组的顺序（会话 ID），存在云端。 */
     const pinOrder = ref([]);
     const currentId = ref('');
     const status = ref(null);
@@ -49,14 +49,14 @@ export const useAgentStore = defineStore('agent', () => {
             const reqId = `a${Date.now().toString(36)}_${seq++}`;
             const timer = setTimeout(() => {
                 pending.delete(reqId);
-                reject(new Error('电脑端没有响应'));
+                reject(new Error('云端没有响应'));
             }, timeoutMs);
             pending.set(reqId, { resolve, reject, timer });
             const sent = ws.sendMsg({ type: 'agent.request', to: 'desktop', data: { reqId, op, args } });
             if (!sent) {
                 clearTimeout(timer);
                 pending.delete(reqId);
-                reject(new Error('未连接电脑端'));
+                reject(new Error('未连接云端'));
             }
         });
     }
@@ -227,7 +227,7 @@ export const useAgentStore = defineStore('agent', () => {
 
     async function loadStatus() {
         try {
-            status.value = await request('status');
+            status.value = await request('status.get');
             return true;
         } catch (error) {
             toast(error.message || '状态加载失败');

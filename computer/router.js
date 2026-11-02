@@ -40,7 +40,7 @@ async function dispatch(message) {
     if (t.startsWith('status.')) {
         if (await status.handle(message)) return;
     }
-    if (t.startsWith('agent.')) {
+    if (t === 'tool.call') {
         if (await agent.handle(message)) return;
     }
 

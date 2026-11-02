@@ -1,5 +1,5 @@
 import WebSocket from 'ws';
-import { SERVER_URL, WEB_URL, SESSION_ID, SESSION_PASSWORD, DEBUG } from './core/env.js';
+import { SERVER_URL, WEB_URL, SESSION_ID, SESSION_PASSWORD, DEVICE_TOKEN, DEBUG } from './core/env.js';
 import { generateSessionId } from './core/ids.js';
 
 const state = {
@@ -51,7 +51,7 @@ function printAccessInfo() {
 function connect() {
     const params = new URLSearchParams({ session: state.sessionId, device: 'desktop' });
     const url = `${SERVER_URL}/ws?${params.toString()}`;
-    state.ws = new WebSocket(url);
+    state.ws = new WebSocket(url, { headers: { authorization: `Bearer ${DEVICE_TOKEN}` } });
 
     state.ws.on('open', () => {
         if (state.hasPrintedAccessInfo) {
@@ -80,6 +80,9 @@ function connect() {
 
     state.ws.on('error', (err) => {
         console.error('❌ 网络连接异常:', err.message);
+        if (/\b401\b/.test(err.message)) {
+            console.error('   Worker 拒绝了这台电脑：检查 DEVICE_TOKEN 是否和 Worker 的 secret 一致');
+        }
     });
 }
 
