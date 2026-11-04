@@ -22,8 +22,6 @@ export const useAgentStore = defineStore('agent', () => {
     /** 置顶组的顺序（会话 ID），存在云端。 */
     const pinOrder = ref([]);
     const currentId = ref('');
-    /** 当前会话的默认设备 id；草稿时为空，发送时用顶栏选中的设备。 */
-    const sessionDeviceId = ref('');
     const status = ref(null);
     const messages = ref([]);
     const compactions = ref([]);
@@ -286,7 +284,6 @@ export const useAgentStore = defineStore('agent', () => {
             }
             // 请求期间已经推来的完整 item 按 ID 合并，不会丢也不会重复。
             messages.value = [...mergeMessages(opened.messages, messages.value.filter((entry) => entry.id > 0)), ...streaming];
-            sessionDeviceId.value = opened.device_id || '';
             compactions.value = opened.compactions;
             hasMore.value = opened.has_more;
             busy.value = opened.running;
@@ -299,7 +296,6 @@ export const useAgentStore = defineStore('agent', () => {
     function createDraft() {
         reset();
         currentId.value = '';
-        sessionDeviceId.value = '';
         ready.value = true;
         viewSeq.value++;
     }
@@ -347,13 +343,10 @@ export const useAgentStore = defineStore('agent', () => {
         let id = currentId.value;
         try {
             if (!id) {
-                // 新会话的默认设备 = 顶栏当前选中的设备；没选就让云端挑在线的第一台。
-                const args = ws.currentDeviceId ? { device_id: ws.currentDeviceId } : {};
-                const session = await request('sessions.create', args);
+                const session = await request('sessions.create', {});
                 if (generation !== mine) return;
                 id = session.id;
                 currentId.value = session.id;
-                sessionDeviceId.value = session.device_id || '';
                 threads.value = [session, ...threads.value];
             }
             const uploaded = [];
@@ -394,16 +387,6 @@ export const useAgentStore = defineStore('agent', () => {
             editThread(id, { title });
         } catch (error) {
             toast(error.message || '重命名失败');
-        }
-    }
-    // 换会话的默认设备：之后不带 device 参数的工具调用都在新设备上执行。
-    async function setThreadDevice(id, deviceId) {
-        try {
-            await request('sessions.patch', { id, device_id: deviceId });
-            editThread(id, { device_id: deviceId });
-            if (currentId.value === id) sessionDeviceId.value = deviceId;
-        } catch (error) {
-            toast(error.message || '切换设备失败');
         }
     }
     async function removeThread(id) {
@@ -468,10 +451,10 @@ export const useAgentStore = defineStore('agent', () => {
     }
 
     return {
-        threads, threadsMore, loadingThreads, pinOrder, currentId, sessionDeviceId, status, messages, compactions, notes,
+        threads, threadsMore, loadingThreads, pinOrder, currentId, status, messages, compactions, notes,
         expanded, busy, stopping, ready, loadError, viewSeq, hasMore, loadingOlder,
         init, imageSrc, loadStatus, loadThreads, loadMoreThreads, openThread, createDraft, loadOlder,
-        send, retrySend, stopRun, renameThread, setThreadDevice, removeThread, pinThread, reorderPins,
+        send, retrySend, stopRun, renameThread, removeThread, pinThread, reorderPins,
         getConfig, saveConfig, patchDevice, removeDevice,
     };
 });

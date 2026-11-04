@@ -73,7 +73,7 @@ check('密码登录', await login(web));
 check('登录后 status.get', (await request(web, 'b', 'status.get', {})).ok);
 
 await request(web, 'c', 'config.put', { responsesUrl: 'http://127.0.0.1:9612/v1/responses', apiKey: 'sk', model: 'm', workdir: '/tmp' });
-const sid = (await request(web, 'd', 'sessions.create', { device_id: DEV })).data.id;
+const sid = (await request(web, 'd', 'sessions.create', {})).data.id;
 
 // 3. 运行到一半停止
 slow = true;

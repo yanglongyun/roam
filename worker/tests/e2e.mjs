@@ -20,9 +20,13 @@ function check(label, ok, detail = '') {
   if (!ok) failures += 1;
 }
 
-/* ── 假模型：按顺序吐回合 ── */
+/* ── 假模型：按顺序吐回合，记下收到的请求体 ── */
 const rounds = [];
-const model = http.createServer((req, res) => {
+const requests = [];
+const model = http.createServer(async (req, res) => {
+  let body = '';
+  for await (const chunk of req) body += chunk;
+  try { requests.push(JSON.parse(body)); } catch { requests.push(null); }
   const round = rounds.shift();
   if (!round) {
     res.writeHead(500).end('no more rounds');
@@ -157,19 +161,14 @@ await wait(400);
 const after = (await agentRequest(web, 'devices.list')).devices.find((d) => d.id === DEV_A);
 check('云端描述不被电脑端上报覆盖', after.name === '甲号机' && after.description === '云端改的描述', `${after.name} / ${after.description}`);
 
-/* ── 4. 配置 + 会话：默认设备 ── */
+/* ── 4. 配置 + 会话：会话不绑设备 ── */
 await agentRequest(web, 'config.put', { responsesUrl: 'http://127.0.0.1:9611/v1/responses', apiKey: 'sk-e2e', model: 'mock-model', workdir: '/tmp' });
-const sessA = await agentRequest(web, 'sessions.create', { device_id: DEV_A });
-check('sessions.create 指定设备', sessA.device_id === DEV_A);
-const sessAuto = await agentRequest(web, 'sessions.create', {});
-check('sessions.create 不指定则挑在线设备', [DEV_A, DEV_B].includes(sessAuto.device_id) || sessAuto.device_id !== '', sessAuto.device_id);
-check('sessions.create 指定不存在的设备报错', /设备不存在/.test(await agentFail(web, 'sessions.create', { device_id: 'nope-device' })));
-const patched = await agentRequest(web, 'sessions.patch', { id: sessAuto.id, device_id: DEV_B });
-check('sessions.patch 改默认设备', patched.device_id === DEV_B);
-const opened = await agentRequest(web, 'sessions.open', { id: sessAuto.id });
-check('sessions.open 返回 device_id', opened.device_id === DEV_B);
+const sessA = await agentRequest(web, 'sessions.create', {});
+check('sessions.create 不带设备字段', typeof sessA.id === 'string' && !('device_id' in sessA));
+const opened = await agentRequest(web, 'sessions.open', { id: sessA.id });
+check('sessions.open 不带设备字段', !('device_id' in opened));
 
-/* ── 5. 工具路由：默认设备 / device 参数 / 不存在 / 离线 ── */
+/* ── 5. 工具路由：device 参数 / 多台在线不填 / 只剩一台不填 / 不存在 / 离线 ── */
 const events = (sid) => web.messages.filter((m) => m.type === 'agent.event' && m.data?.session_id === sid).map((m) => m.data);
 async function runTurn(sid, outputs, text = 'go') {
   rounds.push(...outputs);
@@ -181,13 +180,25 @@ async function runTurn(sid, outputs, text = 'go') {
   return events(sid).filter((e) => e.type === 'function_call_output' && e.item).map((e) => JSON.parse(e.item.output));
 }
 
-// 5a 不带 device → 会话默认设备甲
+// 5a 两台在线、不带 device → 失败并列出在线设备，谁也不执行；带 device=甲 → 甲执行
 let outs = await runTurn(sessA.id, [
-  round([call('c1', 'shell', { command: 'echo 1' })]),
+  round([
+    call('c0', 'shell', { command: 'echo 0' }),
+    call('c1', 'shell', { command: 'echo 1', device: DEV_A }),
+  ]),
   round([say('ok')]),
 ]);
-check('不带 device 的工具在默认设备甲执行', devA.calls.length === 1 && devB.calls.length === 0 && outs.at(-1)?.text?.includes('设备甲'), outs.at(-1)?.text);
+const last1 = outs.slice(-2);
+check('多台在线不带 device 时失败并列出设备', last1[0]?.success === false && /必须在 device 参数里指定/.test(last1[0]?.text || '') && last1[0].text.includes(DEV_A) && last1[0].text.includes(DEV_B), last1[0]?.text);
+check('device=甲 时甲执行', devA.calls.length === 1 && devB.calls.length === 0 && last1[1]?.text?.includes('设备甲'), last1[1]?.text);
 check('发给设备的参数里不含 device 字段', devA.calls[0] && !('device' in devA.calls[0].arguments));
+const prompt = requests.at(-1)?.instructions || '';
+check('系统提示里有两台设备的 id，且没有默认设备的说法', prompt.includes(DEV_A) && prompt.includes(DEV_B) && !prompt.includes('默认设备'), prompt.slice(0, 200));
+outs = await runTurn(sessA.id, [
+  round([call('s1', 'sql', { sql: "SELECT COUNT(*) AS n FROM settings WHERE key = 'system'" })]),
+  round([say('ok')]),
+]);
+check('保存设置时和默认值相同的提示词不入库', /"n":0/.test(outs.at(-1)?.text || ''), outs.at(-1)?.text);
 
 // 5b 带 device=乙 → 乙执行；不存在 / 离线 → 失败且谁也不执行
 outs = await runTurn(sessA.id, [
@@ -202,7 +213,7 @@ check('device=乙 时乙执行', devB.calls.length === 1 && last2[0]?.success ==
 check('device 不存在时失败', last2[1]?.success === false && /设备不存在/.test(last2[1]?.text || ''), last2[1]?.text);
 check('不存在的设备没有落到别的设备', devA.calls.length === 1 && devB.calls.length === 1);
 
-// 5c 乙断开：指定乙的调用失败，同一轮里甲照常
+// 5c 乙断开：指定乙的调用失败；只剩甲在线时不带 device 就在甲执行
 devB.close();
 await wait(500);
 outs = await runTurn(sessA.id, [
@@ -214,7 +225,7 @@ outs = await runTurn(sessA.id, [
 ]);
 const last3 = outs.slice(-2);
 check('离线设备的工具失败并说明离线', last3[0]?.success === false && /离线/.test(last3[0]?.text || ''), last3[0]?.text);
-check('同一轮里在线设备甲照常执行', last3[1]?.success === true && devA.calls.length === 2, last3[1]?.text);
+check('只剩一台在线时不带 device 在它上面执行', last3[1]?.success === true && devA.calls.length === 2 && last3[1]?.text?.includes('设备甲'), last3[1]?.text);
 
 // 5d 全部离线：模型只拿到 sql；设备工具直接失败
 devA.close();
@@ -236,8 +247,8 @@ const list = (await agentRequest(web, 'devices.list')).devices;
 check('甲重连后在线、乙离线', list.find((d) => d.id === DEV_A)?.online === true && list.find((d) => d.id === DEV_B)?.online === false);
 check('离线设备可删除登记，在线不行', /在线/.test(await agentFail(web, 'devices.remove', { id: DEV_A })));
 await agentRequest(web, 'devices.remove', { id: DEV_B });
-const sessAfter = await agentRequest(web, 'sessions.open', { id: sessAuto.id });
-check('删除设备后绑定它的会话失去默认设备', sessAfter.device_id === '');
+const listAfter = (await agentRequest(web, 'devices.list')).devices;
+check('删除离线设备的登记', !listAfter.some((d) => d.id === DEV_B));
 
 /* ── 7. 终端 / 文件消息按设备路由：网页发 device:<id>，设备回话带 meta.deviceId ── */
 const termWait = devA2.waitFor((m) => m.type === 'terminal.list', 5000, 'terminal.list 到设备');
@@ -263,7 +274,6 @@ check('run.stop 没在跑返回 false', stop.stopped === false);
 
 /* ── 清理 ── */
 await agentRequest(web, 'sessions.delete', { id: sessA.id });
-await agentRequest(web, 'sessions.delete', { id: sessAuto.id });
 dup.close();
 web.close();
 model.close();

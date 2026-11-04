@@ -8,12 +8,12 @@
 
 - `worker/`：Cloudflare Worker + Vue 前端；只有一个 Durable Object `TerminalSessionManager`（`idFromName('hub')`），承载所有 WebSocket、鉴权、终端中继和助理。
 - `worker/server/index.js`：hub 本体。网页 `auth.submit { password }` 对 `env.ACCESS_PASSWORD` 做 timingSafeEqual，通过后发 30 天令牌；错 10 次锁 30 分钟（计数在 DO storage），锁定时清空所有令牌；DO 启动时比对 `ACCESS_PASSWORD` 的指纹（存在 storage 的 `passwordFingerprint`，是 SHA-256 不是密码），变了就清空所有令牌——改 secret 会重新部署、DO 必然重启，所以只在构造函数里比；没设 `ACCESS_PASSWORD` 时网页一律 `auth.state { closed }`。电脑端 socket 打 tag `desktop:<device_id>`，`sendToDevice(deviceId, msg)` 按 tag 发；同一 device_id 重连会把旧连接 4002 关掉。`connection.devices` 给网页的是设备列表（D1 登记 + 在线状态）；`web.joined { clientId }` 通知各电脑端把终端快照发给刚登录的网页。
-- `worker/server/agent/`：助理本体：`api.js` 的 `callOp` 是网页用的 op 表（含 `devices.list / patch / remove`，`sessions.create` 收 `device_id`，`sessions.patch` 可改 `device_id`），`runner.js` 解析工具参数里的 `device`（没有就用会话默认设备；不存在 / 离线直接失败，不落到别的设备），`rpc.js` 是设备工具桥（pending 按 device_id 记，断开只 drain 自己的），`tools.js` 里五个设备工具都带可选 `device`，`describeDevices` / `describeAvailability` 生成系统提示里的设备清单，`config.js` 的 `renderPrompt(text, { devices, sessionDeviceId })` 支持 `{{devices}}`（旧的 `{{os}}` 等取会话默认设备）。数据在 D1 + R2（`schema.sql`；旧库升级跑 `migrate.sql`）。
+- `worker/server/agent/`：助理本体：`api.js` 的 `callOp` 是网页用的 op 表（含 `devices.list / patch / remove`，会话不绑设备），`runner.js` 解析工具参数里的 `device`（没填时只有一台在线就用它，多台在线报错并列出在线设备；不存在 / 离线直接失败，不落到别的设备），`rpc.js` 是设备工具桥（pending 按 device_id 记，断开只 drain 自己的），`tools.js` 里五个设备工具都带可选 `device`，`describeDevices` / `describeAvailability` 生成系统提示里的设备清单，`config.js` 的 `renderPrompt(text, { devices })` 支持 `{{devices}}`、`{{time}}`。数据在 D1 + R2（`schema.sql`；旧库升级看 `migrate.sql` 开头的说明）。
 - `computer/`：电脑端，每台电脑一份；配置在 `config.js`（或 `.env` / 环境变量），必填 `CLOUDFLARE_WORKER_URL` 和 `DEVICE_TOKEN`，可选 `DEVICE_NAME`、`DEVICE_DESCRIPTION`；`DEBUG=1` 只认环境变量。设备 id 由 `core/device.js` 首次生成写入 `~/.roam/device.json`。密码校验已经不在电脑端（没有 guard 了）。
 - `computer/services/agent/`：电脑端只剩工具执行（`agent/functions/*`）和浏览器桥，`device.report` 上报 id / 名字 / 描述 / 环境，`tool.result` 发 `to: 'server'`。
 - `computer/services/agent/browser/`：对应 agentic launcher 的浏览器桥、原生消息宿主和宿主登记；宿主名 `yun.roam.browser`。
 - `extension/`：Roam 浏览器插件（取自 agentic 插件），manifest 里的 key 决定固定 ID `opkcnndhnmkilimegkcgeecanhjebpge`，要和 `register-host.js` 一致。权限按最高能力给：`debugger` + `<all_urls>` + 所有标签页，`chrome` 动作开放 tabs / windows / tabGroups / downloads / cookies / history / bookmarks / sessions / topSites 这几个命名空间；browsingData、management、proxy 这类改浏览器本身的故意不开。浏览器工具的执行在 `computer/services/agent/agent/functions/browser.js`，给模型的说明在 `worker/server/agent/tools.js`，三处要一起改。
-- `worker/src/`：前端。`stores/ws.js` 持有 `devices` 和 `currentDeviceId`（localStorage），`sendToDevice(type, data)` 发到 `device:<id>`；来自设备的消息带 `meta.deviceId`，不是当前设备的在 store 里就丢掉。顶栏 `DevicePicker` 选设备，终端 / 文件 / 屏幕 / 状态都跟它走，切换时各 store 自己清空重拉。对话页 `DeviceBar` 显示 / 切换会话默认设备（草稿时跟随顶栏）。设置页有设备区（改名字、描述，删离线设备的登记）。
+- `worker/src/`：前端。`stores/ws.js` 持有 `devices` 和 `currentDeviceId`（localStorage），`sendToDevice(type, data)` 发到 `device:<id>`；来自设备的消息带 `meta.deviceId`，不是当前设备的在 store 里就丢掉。顶栏 `DevicePicker` 选设备，终端 / 文件 / 屏幕 / 状态都跟它走，切换时各 store 自己清空重拉；助理不看它。设置页有设备区（改名字、描述，删离线设备的登记）。
 
 ## 链路
 
@@ -42,7 +42,7 @@
 各子项目自己的 `package.json` 为准：
 
 - `worker/`：Vite + Wrangler，开发用 `npm run dev`，部署 `npm run deploy`（按用户偏好直接 deploy）。
-- 本地联调：`npx wrangler d1 execute roam --local --file=server/agent/schema.sql` 建表后 `npx wrangler dev --port 9507 --var SETTINGS_KEY:dev --var DEVICE_TOKEN:e2e-token --var ACCESS_PASSWORD:e2e-pass`，再 `node tests/e2e.mjs`（假模型 + 两台假设备：鉴权、设备描述、会话默认设备、工具按 device 路由、不存在 / 离线失败、断开只 drain 自己、终端消息路由、同 id 重连）和 `node tests/extra.mjs`（运行中停止、多网页共存、密码锁定——会把本地 hub 锁 30 分钟，放最后；要重跑就删 `.wrangler/state/v3/do` 重启 dev）。测试脚本里写的端口是 9507。`wrangler d1 execute` 在本机偶尔执行完不退出，加 `CI=1` 或直接杀掉即可。
+- 本地联调：`npx wrangler d1 execute roam --local --file=server/agent/schema.sql` 建表后 `npx wrangler dev --port 9507 --var SETTINGS_KEY:dev --var DEVICE_TOKEN:e2e-token --var ACCESS_PASSWORD:e2e-pass`，再 `node tests/e2e.mjs`（假模型 + 两台假设备：鉴权、设备描述、系统提示里的设备清单、工具按 device 路由、多台在线不填 device 报错、只剩一台时不填也行、不存在 / 离线失败、断开只 drain 自己、终端消息路由、同 id 重连）和 `node tests/extra.mjs`（运行中停止、多网页共存、密码锁定——会把本地 hub 锁 30 分钟，放最后；要重跑就删 `.wrangler/state/v3/do` 重启 dev）。测试脚本里写的端口是 9507。`wrangler d1 execute` 在本机偶尔执行完不退出，加 `CI=1` 或直接杀掉即可。
 - 把本机电脑端接到本地 dev：`CLOUDFLARE_WORKER_URL=http://127.0.0.1:9507 DEVICE_TOKEN=e2e-token node computer/index.js`（环境变量覆盖 config.js）。
 - `computer/`：看 `computer/package.json` 入口。
 

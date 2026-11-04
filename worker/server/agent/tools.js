@@ -4,10 +4,10 @@ import { SCHEMA_HINT } from './sql.js';
 // 这些工具必须由设备执行，没有任何设备在线时不下发给模型。
 export const DEVICE_TOOLS = new Set(['shell', 'read', 'write', 'edit', 'browser']);
 
-// 每个设备工具都带可选的 device：不填就在当前会话的默认设备上执行。
+// 每个设备工具都带 device：只有一台设备在线时可以不填，多台在线必须指定。
 const deviceParam = {
   type: 'string',
-  description: '执行设备的 id；不填用当前会话的默认设备。设备列表见系统提示',
+  description: '执行设备的 id，设备清单见系统提示；只有一台设备在线时可以不填',
 };
 
 const deviceTools = [
@@ -140,15 +140,14 @@ function label(device) {
   return device.name || device.host || device.id;
 }
 
-// 给系统提示用的设备清单：每台一两行，标出在线状态和当前会话的默认设备。
-export function describeDevices({ devices = [], sessionDeviceId = '' } = {}) {
+// 给系统提示用的设备清单：每台一两行，标出在线状态。
+export function describeDevices({ devices = [] } = {}) {
   if (!devices.length) return '还没有任何设备接入过。';
   const lines = devices.map((device) => {
     const parts = [
       `- ${label(device)}（id: ${device.id}）`,
       device.online ? '在线' : '离线',
     ];
-    if (device.id === sessionDeviceId) parts.push('当前会话默认设备');
     const env = [device.platform, device.arch].filter(Boolean).join('/');
     if (env) parts.push(env);
     if (device.username) parts.push(`用户 ${device.username}`);
@@ -162,7 +161,7 @@ export function describeDevices({ devices = [], sessionDeviceId = '' } = {}) {
 }
 
 // 给系统提示补一句当前处境，避免模型看不到设备时反复尝试。
-export function describeAvailability({ devices = [], sessionDeviceId = '', images = true } = {}) {
+export function describeAvailability({ devices = [], images = true } = {}) {
   const online = devices.filter((device) => device.online);
   if (!online.length) {
     return '所有设备当前都离线：只有 sql 工具可用，shell / read / write / edit / browser 都不可用，需要设备上的操作时如实说明并请用户连上设备。';
@@ -170,16 +169,10 @@ export function describeAvailability({ devices = [], sessionDeviceId = '', image
   const note = images
     ? ''
     : '这个部署没有图片存储：read 读图片、browser 截图都拿不到图片内容，看网页时用 Runtime.evaluate 读文字和元素位置。';
-  const current = devices.find((device) => device.id === sessionDeviceId);
-  let where;
-  if (current?.online) {
-    where = `当前会话的默认设备是「${label(current)}」，不带 device 参数的工具调用都在它上面执行。`;
-  } else if (current) {
-    where = `当前会话的默认设备「${label(current)}」离线：不带 device 参数的工具调用会失败，要在别的设备上操作必须明确传 device。`;
-  } else {
-    where = '当前会话没有默认设备：调用设备工具时必须明确传 device。';
-  }
   const names = online.map((device) => `「${label(device)}」`).join('、');
+  const where = online.length === 1
+    ? '只有这一台在线，设备工具不填 device 就在它上面执行。'
+    : '有多台在线，调用设备工具必须在 device 里填设备 id；用户没说是哪台时按设备描述判断，判断不了就先问。';
   return `在线设备：${names}。${where}可以用 shell / read / write / edit / browser 操作设备，也可以用 sql 查自己的数据。${note}`;
 }
 

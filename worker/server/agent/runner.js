@@ -1,5 +1,6 @@
 // 工具分发：sql 在云端直接跑；其余工具转给设备，图片结果存进 R2 再回给模型。
-// 目标设备 = 工具参数里的 device，没有就是会话默认设备；不存在或离线直接失败，绝不落到别的设备。
+// 目标设备 = 工具参数里的 device；没填时只有一台在线就用它，多台在线必须指定。
+// 指定的设备不存在或离线直接失败，绝不落到别的设备。
 import { runSql } from './sql.js';
 import { imagesEnabled, saveImage } from './images.js';
 import { DEVICE_TOOLS } from './tools.js';
@@ -19,8 +20,23 @@ function label(device) {
   return device.name || device.host || device.id;
 }
 
+function pickTarget(list, requested, name) {
+  const id = typeof requested === 'string' ? requested.trim() : '';
+  if (id) {
+    const target = list.find((device) => device.id === id);
+    if (!target) throw new Error(`设备不存在：${id}。可用设备见系统提示`);
+    if (!target.online) throw new Error(`设备「${label(target)}」离线，无法执行 ${name}`);
+    return target;
+  }
+  const online = list.filter((device) => device.online);
+  if (online.length === 1) return online[0];
+  if (!online.length) throw new Error(`所有设备都离线，无法执行 ${name}`);
+  const names = online.map((device) => `「${label(device)}」(${device.id})`).join('、');
+  throw new Error(`有 ${online.length} 台设备在线，必须在 device 参数里指定设备 id：${names}`);
+}
+
 // devices 是函数：每次工具调用时现取设备清单和在线状态，回复期间设备可能上下线。
-export function createRunner({ env, bridge, sendToDevice, sessionId, sessionDeviceId = '', devices = () => [] }) {
+export function createRunner({ env, bridge, sendToDevice, sessionId, devices = () => [] }) {
   return async (call, context) => {
     const signal = context?.signal;
     signal?.throwIfAborted();
@@ -37,17 +53,7 @@ export function createRunner({ env, bridge, sendToDevice, sessionId, sessionDevi
       }
 
       const { device: requested, ...rest } = args;
-      const targetId = typeof requested === 'string' && requested.trim() ? requested.trim() : sessionDeviceId;
-      if (!targetId) {
-        throw new Error('没有指定执行设备：这个会话没有默认设备，请在 device 参数里填设备 id');
-      }
-      const target = devices().find((device) => device.id === targetId);
-      if (!target) {
-        throw new Error(`设备不存在：${targetId}。可用设备见系统提示`);
-      }
-      if (!target.online) {
-        throw new Error(`设备「${label(target)}」离线，无法执行 ${call.name}`);
-      }
+      const target = pickTarget(devices(), requested, call.name);
 
       const result = await bridge.call({
         deviceId: target.id,

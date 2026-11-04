@@ -1,6 +1,6 @@
 // 持久化层：配置（settings）、设备登记（devices）、会话与消息。
 // 全部 async —— D1 没有同步接口，调用方都要 await。
-import { defaults, validateConfig } from './config.js';
+import { PREVIOUS_SYSTEMS, defaults, validateConfig } from './config.js';
 import { all, batch, first, one, run, statement } from './db.js';
 import { decryptValue, encryptValue } from './crypto.js';
 
@@ -39,16 +39,23 @@ export async function loadConfig(env) {
       /* 坏行跳过，用默认值兜底。 */
     }
   }
+  if (PREVIOUS_SYSTEMS.includes(stored.system)) delete stored.system;
   Object.assign(config, stored);
   validateConfig(config);
   return config;
 }
 
+// 和默认值一样的项不入库（删掉旧行），以后默认值更新了能直接生效；密钥照存。
 export async function saveConfig(env, config) {
   validateConfig(config);
   const now = Date.now();
+  const base = defaults();
   const statements = [];
   for (const [key, value] of Object.entries(config)) {
+    if (key !== 'apiKey' && JSON.stringify(value) === JSON.stringify(base[key])) {
+      statements.push(statement(env, 'DELETE FROM settings WHERE key = ?', [key]));
+      continue;
+    }
     const stored =
       key === 'apiKey'
         ? await encryptValue(settingsSecret(env), value)
@@ -160,14 +167,11 @@ export async function patchDevice(env, args) {
   return one(env, 'SELECT * FROM devices WHERE id = ?', [data.id]);
 }
 
-// 删除登记（只允许离线设备）；绑在它上面的会话失去默认设备。
+// 删除登记（只允许离线设备，在线检查在调用方）。
 export async function removeDevice(env, args) {
   const { id } = pick(args, ['id']);
   await requireDevice(env, id);
-  await batch(env, [
-    statement(env, "UPDATE sessions SET device_id = '' WHERE device_id = ?", [id]),
-    statement(env, 'DELETE FROM devices WHERE id = ?', [id]),
-  ]);
+  await run(env, 'DELETE FROM devices WHERE id = ?', [id]);
   return { deleted: id };
 }
 
@@ -231,18 +235,17 @@ export async function listSessions(env, args, running = new Set()) {
   return { sessions, has_more: rows.length > PAGE };
 }
 
-export async function createSession(env, deviceId = '') {
+export async function createSession(env) {
   const id = crypto.randomUUID();
   const now = Date.now();
   await run(
     env,
-    'INSERT INTO sessions (id, title, device_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
-    [id, '', deviceId || '', now, now],
+    'INSERT INTO sessions (id, title, created_at, updated_at) VALUES (?, ?, ?, ?)',
+    [id, '', now, now],
   );
   return {
     id,
     title: '',
-    device_id: deviceId || '',
     created_at: now,
     updated_at: now,
     pin: null,
@@ -260,7 +263,7 @@ export async function requireSession(env, id) {
 
 export async function openSession(env, args, runState = null) {
   const { id } = pick(args, ['id']);
-  const session = await requireSession(env, id);
+  await requireSession(env, id);
   const rows = await all(
     env,
     'SELECT * FROM messages WHERE session_id = ? ORDER BY id DESC LIMIT 61',
@@ -280,7 +283,6 @@ export async function openSession(env, args, runState = null) {
     [id],
   );
   return {
-    device_id: session.device_id || '',
     messages,
     has_more: rows.length > 60,
     compactions,
@@ -290,9 +292,9 @@ export async function openSession(env, args, runState = null) {
 }
 
 export async function patchSession(env, args, running = new Set()) {
-  const data = pick(args, ['id', 'title', 'pinned', 'device_id']);
+  const data = pick(args, ['id', 'title', 'pinned']);
   const id = data.id;
-  if (data.title === undefined && data.pinned === undefined && data.device_id === undefined) {
+  if (data.title === undefined && data.pinned === undefined) {
     fail(400, '缺少要修改的字段');
   }
   if (data.title !== undefined && (typeof data.title !== 'string' || [...data.title.trim()].length > 120)) {
@@ -301,17 +303,10 @@ export async function patchSession(env, args, running = new Set()) {
   if (data.pinned !== undefined && typeof data.pinned !== 'boolean') {
     fail(400, 'pinned 必须是布尔值');
   }
-  if (data.device_id !== undefined) {
-    if (typeof data.device_id !== 'string') fail(400, 'device_id 必须是字符串');
-    if (data.device_id) await requireDevice(env, data.device_id);
-  }
   const session = await requireSession(env, id);
   const statements = [];
   if (data.title !== undefined) {
     statements.push(statement(env, 'UPDATE sessions SET title = ? WHERE id = ?', [data.title.trim(), id]));
-  }
-  if (data.device_id !== undefined) {
-    statements.push(statement(env, 'UPDATE sessions SET device_id = ? WHERE id = ?', [data.device_id, id]));
   }
   if (data.pinned === true && session.pin === null) {
     const row = await one(env, 'SELECT MIN(pin) AS pin FROM sessions');

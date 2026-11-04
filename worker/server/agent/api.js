@@ -69,20 +69,9 @@ async function sessionsList(ctx, args) {
   return store.listSessions(ctx.env, args, ctx.runningIds());
 }
 
-// 新建会话时选默认设备：没指定就取在线的第一台，再没有就取登记过的第一台。
-async function sessionsCreate(ctx, args) {
-  const { device_id: requested } = pick(args, ['device_id']);
-  let deviceId = '';
-  if (requested !== undefined && requested !== '') {
-    if (typeof requested !== 'string') fail(400, 'device_id 必须是字符串');
-    await store.requireDevice(ctx.env, requested);
-    deviceId = requested;
-  } else {
-    const devices = await ctx.devices();
-    const chosen = devices.find((device) => device.online) || devices[0];
-    deviceId = chosen?.id || '';
-  }
-  return store.createSession(ctx.env, deviceId);
+// 会话不绑设备：在哪台设备上执行由每次工具调用的 device 参数决定。
+async function sessionsCreate(ctx) {
+  return store.createSession(ctx.env);
 }
 
 async function sessionsOpen(ctx, args) {
@@ -176,7 +165,7 @@ async function messagesSend(ctx, args) {
   } catch (error) {
     fail(400, error.message);
   }
-  const session = await store.requireSession(ctx.env, id);
+  await store.requireSession(ctx.env, id);
   // 检查和登记之间没有 await 以外的空隙：DO 单线程，同一会话不会同时开始两轮。
   if (ctx.runs.has(id)) {
     fail(409, '会话正在回复');
@@ -201,7 +190,7 @@ async function messagesSend(ctx, args) {
     }
     const saved = await store.saveMessage(ctx.env, id, user);
     ctx.publish(id, { type: 'message', item: user, ...saved });
-    state.done = reply(ctx, id, state, session.device_id || '').finally(() => {
+    state.done = reply(ctx, id, state).finally(() => {
       ctx.runs.delete(id);
       ctx.markIdle(id);
     });
@@ -225,11 +214,11 @@ async function messagesStop(ctx, args) {
   return { stopped: Boolean(current) };
 }
 
-async function reply(ctx, id, state, sessionDeviceId) {
+async function reply(ctx, id, state) {
   const env = ctx.env;
   const push = (event) => ctx.publish(id, event);
   const devices = (await ctx.devices()).map(publicDevice);
-  const scope = { devices, sessionDeviceId };
+  const scope = { devices };
   const config = {
     ...(await ctx.config()),
     images_dir: 'r2',
@@ -270,7 +259,7 @@ async function reply(ctx, id, state, sessionDeviceId) {
       instructions: renderPrompt(
         config.system.replace(
           '{{device_status}}',
-          describeAvailability({ devices, sessionDeviceId, images: imagesEnabled(env) }),
+          describeAvailability({ devices, images: imagesEnabled(env) }),
         ),
         scope,
       ),
@@ -284,7 +273,6 @@ async function reply(ctx, id, state, sessionDeviceId) {
         bridge: ctx.bridge,
         sendToDevice: ctx.sendToDevice,
         sessionId: id,
-        sessionDeviceId,
         // 登记信息用回复开始时的快照，在线状态每次工具调用时现查。
         devices: () => {
           const online = ctx.onlineDevices();

@@ -6,7 +6,6 @@
 CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY,
   title TEXT,
-  device_id TEXT,           -- 会话的默认设备；工具不带 device 参数时在它上面执行
   pin INTEGER,
   created_at INTEGER,
   updated_at INTEGER
@@ -72,7 +71,6 @@ CREATE VIEW IF NOT EXISTS v_sessions AS
 SELECT
   s.id,
   s.title,
-  s.device_id,
   s.pin,
   s.created_at,
   s.updated_at,

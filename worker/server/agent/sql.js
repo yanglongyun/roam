@@ -145,13 +145,13 @@ export async function runSql(db, args) {
 // 给模型看的表结构说明，跟着工具定义一起送过去。
 export const SCHEMA_HINT = `
 表与视图：
-- sessions(id, title, device_id, pin, created_at, updated_at)
+- sessions(id, title, pin, created_at, updated_at)
 - messages(id, session_id, item, usage, created_at)  item 是模型 item 的 JSON
 - compactions(id, session_id, message_id, summary, created_at)
-- devices(id, name, description, platform, arch, host, username, workdir, browser, last_seen, created_at)  已接入过的设备；sessions.device_id 指向它
+- devices(id, name, description, platform, arch, host, username, workdir, browser, last_seen, created_at)  已接入过的设备
 - settings(key, value, updated_at)
 - images(id, session_id, mime, size, created_at)
-- v_sessions(id, title, device_id, pin, created_at, updated_at, message_count)
+- v_sessions(id, title, pin, created_at, updated_at, message_count)
 - v_messages(id, session_id, kind, role, tool_name, text, payload, call_id, created_at)
     kind: message(对话正文) / reasoning(思考) / function_call(工具调用) / function_call_output(工具结果)
     text: message 与 reasoning 的正文；payload: 工具名对应参数或结果（JSON 字符串）

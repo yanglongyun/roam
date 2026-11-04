@@ -45,7 +45,7 @@ async function saveDevice(device) {
     }
 }
 async function removeDevice(device) {
-    if (!window.confirm(`删除「${ws.deviceLabel(device)}」的登记？绑在它上面的会话会失去默认设备。`)) return;
+    if (!window.confirm(`删除「${ws.deviceLabel(device)}」的登记？下次连上会重新登记。`)) return;
     try {
         await agent.removeDevice(device.id);
         delete deviceForms[device.id];
@@ -160,7 +160,7 @@ watch(() => ws.showActions, (online) => { if (online) load(); }, { immediate: tr
                             <label class="block">
                                 <span class="field-k">系统提示词</span>
                                 <textarea class="field" v-model="form.system" rows="6" spellcheck="false"></textarea>
-                                <span class="field-note" v-pre>支持变量 {{devices}}（全部设备清单，含名字、描述、在线状态）、{{time}}、{{device_status}}；{{os}} {{arch}} {{host}} {{user}} {{workdir}} 取当前会话默认设备的信息。</span>
+                                <span class="field-note" v-pre>支持变量 {{devices}}（全部设备清单，含 id、名字、描述、在线状态）、{{time}}、{{device_status}}。删掉 {{devices}} 助理就不知道有哪些设备。</span>
                             </label>
                         </div>
                     </section>

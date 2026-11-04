@@ -35,7 +35,7 @@ Roam Computer ×N（每台电脑一个设备 id:终端 / 文件 / 屏幕 / 执�
 
 - 多设备:任意数量的电脑接入同一个部署;网页右上角选设备,终端 / 文件 / 屏幕 / 状态都对着选中的那台
 - 远程终端
-- AI 助理(agent,来自 agentic):模型调用和对话在云端,电脑关机也能翻看历史;每个会话有默认设备,工具调用也可以用 `device` 参数指定任意一台在线设备执行,可执行命令、读写和修改文件、看图、操作浏览器。每台设备的名字和描述会进入助理的上下文,助理知道哪台机器是干什么的
+- AI 助理(agent,来自 agentic):模型调用和对话在云端,电脑关机也能翻看历史;助理知道所有接入的设备,每次工具调用用 `device` 参数指定在哪台执行,可执行命令、读写和修改文件、看图、操作浏览器。每台设备的名字和描述会进入助理的上下文,助理知道哪台机器是干什么的
 - 文件浏览、读取、上传、重命名、删除
 - 屏幕截图查看
 - 访问密码在云端校验,登录后 30 天免密;电脑离线也能登录看历史
@@ -95,16 +95,21 @@ npm run deploy
 
 ```bash
 cd worker
-npx wrangler d1 execute roam --remote --file=server/agent/migrate.sql   # devices 加 description 列、删 active 表
+npx wrangler d1 execute roam --remote --file=server/agent/migrate.sql   # devices 加 description 列、删 active 表、会话去掉 device_id
 npx wrangler d1 execute roam --remote --file=server/agent/schema.sql    # 重建视图
 npx wrangler secret put ACCESS_PASSWORD                                 # 把原来 computer/config.js 里的 SESSION_PASSWORD 填进来即可
 npm run deploy
 ```
 
-电脑端把 `config.js` 里的 `SESSION_ID`、`SESSION_PASSWORD`、`DEBUG` 删掉,重启后会生成新的设备 id。旧会话里 `device_id` 还是 `desktop`,在网页「设置 → 设备」里能看到新设备的 id,用一条 SQL 迁过去:
+电脑端把 `config.js` 里的 `SESSION_ID`、`SESSION_PASSWORD`、`DEBUG` 删掉,重启后会生成新的设备 id。旧的那条 `desktop` 设备登记会一直显示离线,在网页「设置 → 设备」里删掉即可。
+
+已经部署过多设备版、会话还带着默认设备的,只要去掉 `sessions.device_id` 再重建视图:
 
 ```bash
-npx wrangler d1 execute roam --remote --command "UPDATE sessions SET device_id = '<新设备 id>' WHERE device_id = 'desktop'; DELETE FROM devices WHERE id = 'desktop'"
+cd worker
+npx wrangler d1 execute roam --remote --command "DROP VIEW IF EXISTS v_sessions; ALTER TABLE sessions DROP COLUMN device_id"
+npx wrangler d1 execute roam --remote --file=server/agent/schema.sql
+npm run deploy
 ```
 
 ### 可选:开启图片(R2)
@@ -160,7 +165,7 @@ npm start
 1. 打开「设置」,填 Responses 接口地址(如 `https://api.openai.com/v1/responses`)、API Key、模型并保存;顺手给每台设备写一句描述
 2. 回到「助理」直接说要做什么,可以附带图片(每条最多 5 张)
 
-每个会话有一个默认设备(新建时取顶栏选中的那台,对话顶部那条栏可以换):模型不带 `device` 参数的工具调用都在它上面执行;要跨设备操作时模型会在参数里写明 `device`。目标设备不存在或离线,工具直接返回失败,不会落到别的设备上。
+会话不绑设备。所有设备都连到同一个 hub,助理的系统提示里有全部设备的 id、名字、描述和在线状态,每次工具调用用 `device` 参数写明在哪台执行:只有一台在线时可以不写,多台在线必须写(你在消息里说「在租房那台上…」,助理会按设备描述选)。目标设备不存在或离线,工具直接返回失败,不会落到别的设备上。顶栏的设备选择只管终端 / 文件 / 屏幕 / 状态这些你自己操作的页面,和助理无关。
 
 会话、消息、设置和设备登记存在 D1,图片存在 R2(没开 R2 就不收发图片);API Key 用 `SETTINGS_KEY` 加密后入库,网页端只能看到掩码。电脑端本机只留浏览器插件的管道、工具截图的临时目录(`~/.roam/agent/`)和设备 id(`~/.roam/device.json`)。
 
@@ -292,7 +297,7 @@ nssm remove Roam confirm   # 卸载
 - Computer 控制台出现 `401`:`DEVICE_TOKEN` 和 Worker 的 secret 不一致
 - Computer 控制台提示「本连接被替换」:同一个 `~/.roam/device.json` 被两台机器用了(比如复制了整个 home),删掉其中一台的这个文件重启
 
-助理能聊天但工具都报「设备离线」或「设备不存在」:看对话顶部那条栏选的默认设备是哪台,换成在线的那台;模型在 `device` 参数里写了不存在的 id 就会报不存在。
+助理能聊天但工具都报「设备离线」或「设备不存在」:到「设置 → 设备」看那台是否在线;模型在 `device` 参数里写了不存在的 id 就会报不存在。报「必须在 device 参数里指定」说明有多台在线而模型没写设备,在消息里说清楚是哪台即可。
 
 本地联调 Worker:
 

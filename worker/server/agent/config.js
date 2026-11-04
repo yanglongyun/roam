@@ -8,7 +8,7 @@ export const defaults = () => ({
   model: 'gpt-4o-mini',
   context_window: 0,
   system:
-    '你是运行在云端的 AI agent，数据存在云端数据库里；用户可能接入了多台设备，shell / read / write / edit / browser 这些工具会转发到设备上执行，用 device 参数指定设备，不填就是当前会话的默认设备。\n\n' +
+    '你是运行在云端的 AI agent，数据存在云端数据库里；用户可能接入了多台设备，shell / read / write / edit / browser 这些工具会转发到设备上执行，用 device 参数填设备 id 指定在哪台执行，只有一台在线时可以不填。\n\n' +
     '设备：\n{{devices}}\n\n' +
     '时间 {{time}}。\n' +
     '{{device_status}}\n' +
@@ -24,12 +24,19 @@ export const defaults = () => ({
   max_output: 30000,
 });
 
-// 上一版的默认提示词：迁移时发现用户存的还是它，就换成新默认，免得旧占位符留在那里。
-export const LEGACY_SYSTEM =
+// 以前版本的默认提示词。库里存的如果还是其中之一，说明用户没改过，按当前默认处理，
+// 免得旧说法（「会话的默认设备」、{{os}} 这些占位符）一直留在提示词里。
+export const PREVIOUS_SYSTEMS = [
+  '你是运行在云端的 AI agent，数据存在云端数据库里；用户可能接入了多台设备，shell / read / write / edit / browser 这些工具会转发到设备上执行，用 device 参数指定设备，不填就是当前会话的默认设备。\n\n' +
+    '设备：\n{{devices}}\n\n' +
+    '时间 {{time}}。\n' +
+    '{{device_status}}\n' +
+    '改文件前先读取。破坏性操作执行前说明目标。根据工具结果继续工作，不确定时检查，不要猜。回答简洁。',
   '你是运行在云端的 AI agent，数据存在云端数据库里；需要时可把 shell / read / write / edit / browser 这些工具调用转发给用户已连接的设备执行。\n\n' +
-  '环境：{{os}}/{{arch}}，主机 {{host}}，用户 {{user}}，工作目录 {{workdir}}，时间 {{time}}。\n' +
-  '{{device_status}}\n' +
-  '改文件前先读取。破坏性操作执行前说明目标。根据工具结果继续工作，不确定时检查，不要猜。回答简洁。';
+    '环境：{{os}}/{{arch}}，主机 {{host}}，用户 {{user}}，工作目录 {{workdir}}，时间 {{time}}。\n' +
+    '{{device_status}}\n' +
+    '改文件前先读取。破坏性操作执行前说明目标。根据工具结果继续工作，不确定时检查，不要猜。回答简洁。',
+];
 
 // 只校验这个应用自己用的字段。工作目录的"是否真的存在"由设备侧校验，
 // 云端只看它是不是绝对路径。
@@ -88,18 +95,10 @@ export function requireModel(config) {
   }
 }
 
-// 占位符：{{devices}} 是全部设备清单；{{os}} {{arch}} {{host}} {{user}} {{workdir}}
-// 仍然可用，取的是当前会话默认设备的信息，没有默认设备就用中性文案。
+// 占位符：{{devices}} 是全部设备清单，{{time}} 是当前时间。
 export function renderPrompt(text, scope = {}) {
-  const devices = scope.devices || [];
-  const current = devices.find((device) => device.id === scope.sessionDeviceId) || null;
   const values = {
-    devices: describeDevices({ devices, sessionDeviceId: scope.sessionDeviceId || '' }),
-    os: current?.platform || '未知系统',
-    arch: current?.arch || '',
-    host: current?.host || '未连接设备',
-    user: current?.username || '未知用户',
-    workdir: current?.workdir || '未知目录',
+    devices: describeDevices({ devices: scope.devices || [] }),
     time: new Date().toISOString(),
     device_status: '',
   };
