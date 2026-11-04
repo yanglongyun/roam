@@ -310,7 +310,7 @@ node tests/extra.mjs   # 运行中停止、多网页共存、密码锁定(会把
 
 - 终端输出、文件内容、屏幕截图只经 Worker 中继,不落地
 - 助理的对话、设置、设备登记存在你自己账号的 D1,图片存在 R2(可选);API Key 用 `SETTINGS_KEY` 加密保存,只在 Worker 里解密
-- 网页访问密码(`ACCESS_PASSWORD`)在云端校验,错 10 次锁 30 分钟;登录后 30 天内免密,锁定时所有免密令牌作废
+- 网页访问密码(`ACCESS_PASSWORD`)在云端校验,错 10 次锁 30 分钟;登录后 30 天内免密,锁定时或换了 `ACCESS_PASSWORD` 之后所有免密令牌作废
 - 只有带对 `DEVICE_TOKEN` 的电脑端能接入;这个令牌所有设备共用,丢了一台就要换掉并更新每台电脑
 - 助理能执行任意命令、读写文件、操作浏览器,权限等同于远程终端;`ACCESS_PASSWORD` 用足够长的随机串
 - 不要把真实 `computer/config.js` 和 `worker/wrangler.jsonc` 提交到仓库

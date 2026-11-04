@@ -25,6 +25,13 @@ async function sameSecret(expected, given) {
     return crypto.subtle.timingSafeEqual(a, b);
 }
 
+// 访问密码的指纹：只用来判断密码换没换，存的不是密码本身。
+async function passwordFingerprint(password) {
+    if (!password) return '';
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`roam-access-password:${password}`));
+    return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
 // 电脑端连上来要带 DEVICE_TOKEN：电脑端能执行命令、读文件，
 // 云端又存着对话和 API Key，不校验的话谁都能冒充电脑端。
 function deviceTokenValid(request, env) {
@@ -54,6 +61,14 @@ export class TerminalSessionManager extends DurableObject {
                     }
                 }
             }
+            // 访问密码换了就作废之前发出的免密令牌。改 secret 会重新部署、对象跟着重启，
+            // 所以启动时比一次就够；第一次上线这段逻辑时也会清一次，大家重新登录一次。
+            const fingerprint = await passwordFingerprint(this.env.ACCESS_PASSWORD);
+            if (fingerprint !== await this.ctx.storage.get('passwordFingerprint')) {
+                this.authTokens.clear();
+                await this.ctx.storage.put({ authTokens: {}, passwordFingerprint: fingerprint });
+            }
+
             const fails = await this.ctx.storage.get('authFails');
             if (typeof fails === 'number') this.authFails = fails;
             const lockout = await this.ctx.storage.get('lockoutUntil');
