@@ -12,6 +12,8 @@ const term = useTerminalStore();
 const route = useRoute();
 
 const app = computed(() => view.appOf(route.path));
+// 设备选择只给对着某一台设备操作的页面；助理和设置不看它，不显示免得误导。
+const deviceScoped = computed(() => ['terminal', 'files', 'screen', 'status'].includes(route.name));
 
 // 有侧栏的应用把「当前打开的东西」放在标题上，其余显示应用名
 const title = computed(() => {
@@ -40,7 +42,7 @@ const title = computed(() => {
             <div class="truncate font-serif font-bold text-[15px] tracking-tight text-zinc-100">{{ title }}</div>
         </div>
 
-        <DevicePicker class="shrink-0" />
+        <DevicePicker v-if="deviceScoped" class="shrink-0" />
 
         <button
             @click="view.toggleApps"

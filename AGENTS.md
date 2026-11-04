@@ -13,7 +13,7 @@
 - `computer/services/agent/`：电脑端只剩工具执行（`agent/functions/*`）和浏览器桥，`device.report` 上报 id / 名字 / 描述 / 环境，`tool.result` 发 `to: 'server'`。
 - `computer/services/agent/browser/`：对应 agentic launcher 的浏览器桥、原生消息宿主和宿主登记；宿主名 `yun.roam.browser`。
 - `extension/`：Roam 浏览器插件（取自 agentic 插件），manifest 里的 key 决定固定 ID `opkcnndhnmkilimegkcgeecanhjebpge`，要和 `register-host.js` 一致。权限按最高能力给：`debugger` + `<all_urls>` + 所有标签页，`chrome` 动作开放 tabs / windows / tabGroups / downloads / cookies / history / bookmarks / sessions / topSites 这几个命名空间；browsingData、management、proxy 这类改浏览器本身的故意不开。浏览器工具的执行在 `computer/services/agent/agent/functions/browser.js`，给模型的说明在 `worker/server/agent/tools.js`，三处要一起改。
-- `worker/src/`：前端。`stores/ws.js` 持有 `devices` 和 `currentDeviceId`（localStorage），`sendToDevice(type, data)` 发到 `device:<id>`；来自设备的消息带 `meta.deviceId`，不是当前设备的在 store 里就丢掉。顶栏 `DevicePicker` 选设备，终端 / 文件 / 屏幕 / 状态都跟它走，切换时各 store 自己清空重拉；助理不看它。设置页有设备区（改名字、描述，删离线设备的登记）。
+- `worker/src/`：前端。`stores/ws.js` 持有 `devices` 和 `currentDeviceId`（localStorage），`sendToDevice(type, data)` 发到 `device:<id>`；来自设备的消息带 `meta.deviceId`，不是当前设备的在 store 里就丢掉。顶栏 `DevicePicker` 选设备，只在终端 / 文件 / 屏幕 / 状态页显示（`AppHeader` 按路由名判断），这几页都跟它走，切换时各 store 自己清空重拉；助理和设置页不显示也不看它。设置页有设备区（改名字、描述，删离线设备的登记）。
 
 ## 链路
 

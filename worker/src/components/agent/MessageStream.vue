@@ -186,7 +186,7 @@ watch(() => [agent.ready, agent.hasMore, agent.loadingOlder, rows.value.length],
             <div v-if="agent.ready && !rows.length" class="blank">
                 <div class="blank-title">这次做点什么？</div>
                 <div class="blank-sub">
-                    助理跑在你的电脑上，可以执行命令、读写文件、操作浏览器。
+                    助理能操作所有接入的设备：执行命令、读写文件、操作浏览器。
                     <template v-if="agent.status && !agent.status.model_ready">
                         <br />先去 <button class="link" @click="router.push('/settings')">设置</button> 里配置模型。
                     </template>
