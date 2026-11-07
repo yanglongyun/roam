@@ -11,6 +11,7 @@ import { imageTypes } from './images.js';
 import { startBrowser } from './browser/bridge.js';
 import { registerHost } from './browser/register-host.js';
 import runTool from './agent/runner.js';
+import screen from '../screen/index.js';
 
 let context = null;
 
@@ -37,6 +38,7 @@ function start({ browser = true } = {}) {
         },
         // 退出时用它取消所有还在跑的工具，别让 shell 卡住进程。
         controller: new AbortController(),
+        calls: new Map(),
     };
     if (!browser) return;
     try {
@@ -107,28 +109,40 @@ function pickSettings(config) {
 }
 
 // 跑一次工具，返回可以直接塞进 tool.result 的载荷（图片转成 base64）。
-async function execute({ name, arguments: args, config } = {}) {
+async function execute({ name, arguments: args, config } = {}, signal = context.controller.signal) {
     let result;
     try {
         result = await runTool(
             { name, arguments: JSON.stringify(args ?? {}) },
             // 云端设置覆盖本地默认值；工作目录留空就用这台电脑的用户目录。
-            { ...context.toolConfig, ...pickSettings(config), browser: context.browser },
-            context.controller.signal,
+            { ...context.toolConfig, ...pickSettings(config), browser: context.browser, screen },
+            signal,
         );
     } catch (error) {
+        signal.throwIfAborted();
         result = { text: error.message, failed: true };
     }
+    signal.throwIfAborted();
     if (!result.imageURL) return { text: result.text, failed: Boolean(result.failed) };
     return attachImage(result);
 }
 
 async function handle(message) {
-    if (message.type !== 'tool.call') return false;
+    if (!['tool.call', 'tool.cancel'].includes(message.type)) return false;
     const { call_id: callId } = message.data || {};
-    if (!callId) return true;
-    const result = await execute(message.data);
-    ws.send({ type: 'tool.result', to: 'server', data: { call_id: callId, result } });
+    if (!callId || !context) return true;
+    if (message.type === 'tool.cancel') { context.calls.get(callId)?.abort(); return true; }
+    if (context.calls.has(callId)) return true;
+    const controller = new AbortController();
+    const active = context;
+    active.calls.set(callId, controller);
+    const signal = AbortSignal.any([active.controller.signal, controller.signal]);
+    try {
+        const result = await execute(message.data, signal);
+        if (!signal.aborted) ws.send({ type: 'tool.result', to: 'server', data: { call_id: callId, result } });
+    } catch (error) {
+        if (!signal.aborted) throw error;
+    } finally { active.calls.delete(callId); }
     return true;
 }
 
@@ -139,5 +153,9 @@ async function shutdown() {
     context = null;
 }
 
-export { start, execute, handle, report, shutdown };
-export default { start, execute, handle, report, shutdown };
+function cancelAll() {
+    for (const controller of context?.calls.values() || []) controller.abort();
+}
+
+export { start, execute, handle, report, shutdown, cancelAll };
+export default { start, execute, handle, report, shutdown, cancelAll };

@@ -1,38 +1,20 @@
 import ws from '../../ws.js';
 import { captureCompressed } from '../../core/screenshot.js';
+import { createScreenService } from './session.js';
 
-async function capture(reqId) {
-    const shot = await captureCompressed();
-    ws.broadcast('screen.capture.result', {
-        reqId,
-        ok: true,
-        mime: shot.mime,
-        capturedAt: Date.now(),
-        bytes: shot.buffer.length,
-        data: shot.buffer.toString('base64'),
-    });
-}
-
-async function handle(message) {
-    const t = message.type;
-    const d = message.data || {};
-    const reqId = d.reqId;
-
-    try {
-        switch (t) {
-            case 'screen.capture':
-                await capture(reqId);
-                return true;
-            default:
-                ws.broadcast('screen.capture.result', { reqId, ok: false, error: `未知 screen 操作: ${t}` });
-                return true;
-        }
-    } catch (err) {
-        console.error(`screen 错误 [${t}]:`, err.message || err);
-        ws.broadcast('screen.capture.result', { reqId, ok: false, error: err.message || String(err) });
-        return true;
-    }
-}
-
-export { handle };
-export default { handle };
+let native;
+async function mac() { return native ||= await import('../../core/mac-screen-control.js'); }
+const unsupported = () => { throw Object.assign(new Error('当前设备暂不支持远程操作'), { code: 'CONTROL_UNSUPPORTED' }); };
+const driver = {
+    display: async () => process.platform === 'darwin' ? (await mac()).screenDisplay() : null,
+    status: async () => process.platform === 'darwin' ? (await mac()).controlStatus() : { supported: false, allowed: false, platform: process.platform },
+    input: async (input, display) => process.platform === 'darwin' ? (await mac()).applyInput(input, display) : unsupported(),
+    permission: async () => process.platform === 'darwin' ? (await mac()).requestControlPermission() : unsupported(),
+};
+const service = createScreenService({ capture: captureCompressed, driver,
+    send: (client, result) => ws.sendToClient(client, 'screen.result', result),
+});
+export const handle = service.handle;
+export const releaseClient = service.releaseClient;
+export const perform = service.perform;
+export default { handle, releaseClient, perform };

@@ -2,6 +2,7 @@ import { execFile } from 'child_process';
 import { promises as fsp } from 'fs';
 import os from 'os';
 import path from 'path';
+import { imageSize } from 'image-size';
 
 const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const JPEG_MAGIC = Buffer.from([0xff, 0xd8, 0xff]);
@@ -31,18 +32,6 @@ function runFile(command, args, options = {}) {
     });
 }
 
-function macScreenshotError(err) {
-    const raw = String(err?.stderr || err?.message || err || '').trim();
-    if (/could not create image from display|no display|not authorized|screen recording|TCC/i.test(raw)) {
-        return new Error([
-            'macOS 截图失败：Roam Computer 当前无法访问屏幕。',
-            '请确认 Roam Computer 是在已登录的图形桌面会话里启动的，并在“系统设置 -> 隐私与安全性 -> 屏幕录制”里允许启动它的应用（Terminal/iTerm/Node/服务管理器）。授权后需要重启 Roam Computer。',
-            raw ? `原始错误：${raw}` : '',
-        ].filter(Boolean).join('\n'));
-    }
-    return err;
-}
-
 async function readValidPng(file) {
     const buf = await fsp.readFile(file);
     if (buf.length < PNG_MAGIC.length || !buf.subarray(0, PNG_MAGIC.length).equals(PNG_MAGIC)) {
@@ -69,15 +58,23 @@ async function captureToTemp(command, argsForFile, options = {}) {
     }
 }
 
-async function captureMacPng() {
+async function captureMacPng(signal) {
+    const { ensureScreenAccess } = await import('./mac-screen-access.js');
+    ensureScreenAccess();
     try {
-        return await captureToTemp('screencapture', (file) => ['-x', '-t', 'png', file]);
+        return await captureToTemp('/usr/sbin/screencapture', (file) => ['-x', '-m', '-t', 'png', file], { signal });
     } catch (err) {
-        throw macScreenshotError(err);
+        signal?.throwIfAborted();
+        console.error('macOS 截图失败', err);
+        if (err.code === 'ENOENT') throw new Error('系统截图程序不可用。');
+        if (/could not create image from display|no display/i.test(err.stderr || '')) {
+            throw new Error('当前桌面无法截图。请确认这台 Mac 已登录桌面，且有可用的显示器。');
+        }
+        throw new Error('系统截图失败，请重试。');
     }
 }
 
-async function captureWindowsPng() {
+async function captureWindowsPng(signal) {
     const script = [
         'Add-Type -AssemblyName System.Windows.Forms,System.Drawing;',
         '$bounds=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds;',
@@ -92,6 +89,7 @@ async function captureWindowsPng() {
     const stdout = await runFile('powershell.exe', ['-NoProfile', '-Command', script], {
         timeout: 15000,
         maxBuffer: 64 * 1024 * 1024,
+        signal,
     });
     const buf = Buffer.from(String(stdout).trim(), 'base64');
     if (buf.length < PNG_MAGIC.length || !buf.subarray(0, PNG_MAGIC.length).equals(PNG_MAGIC)) {
@@ -100,7 +98,7 @@ async function captureWindowsPng() {
     return buf;
 }
 
-async function captureLinuxPng() {
+async function captureLinuxPng(signal) {
     const attempts = [
         ['gnome-screenshot', (file) => ['-f', file]],
         ['spectacle', (file) => ['-b', '-n', '-o', file]],
@@ -110,18 +108,20 @@ async function captureLinuxPng() {
     let lastError;
     for (const [command, args] of attempts) {
         try {
-            return await captureToTemp(command, args);
+            return await captureToTemp(command, args, { signal });
         } catch (err) {
+            signal?.throwIfAborted();
             lastError = err;
         }
     }
     throw new Error(`当前系统没有可用截图命令: ${lastError?.message || 'unknown error'}`);
 }
 
-async function capturePng() {
-    if (process.platform === 'darwin') return captureMacPng();
-    if (process.platform === 'win32') return captureWindowsPng();
-    return captureLinuxPng();
+async function capturePng(signal) {
+    signal?.throwIfAborted();
+    if (process.platform === 'darwin') return captureMacPng(signal);
+    if (process.platform === 'win32') return captureWindowsPng(signal);
+    return captureLinuxPng(signal);
 }
 
 async function compressPngForWire(png, options = {}) {
@@ -132,13 +132,13 @@ async function compressPngForWire(png, options = {}) {
     try {
         await fsp.writeFile(tmpPng, png);
         if (process.platform === 'darwin') {
-            await runFile('sips', [
+            await runFile('/usr/bin/sips', [
                 '-Z', String(maxSide),
                 '-s', 'format', 'jpeg',
                 '-s', 'formatOptions', String(quality),
                 tmpPng,
                 '--out', tmpJpg,
-            ], { timeout: 15000, maxBuffer: 64 * 1024 * 1024 });
+            ], { timeout: 15000, maxBuffer: 64 * 1024 * 1024, signal: options.signal });
             return { buffer: await readValidJpeg(tmpJpg), mime: 'image/jpeg' };
         }
     } finally {
@@ -149,13 +149,11 @@ async function compressPngForWire(png, options = {}) {
 }
 
 async function captureCompressed(options = {}) {
-    const png = await capturePng();
-    try {
-        return await compressPngForWire(png, options);
-    } catch (err) {
-        console.warn(`截图压缩失败，回退 PNG: ${err?.message || err}`);
-        return { buffer: png, mime: 'image/png' };
-    }
+    const png = await capturePng(options.signal);
+    options.signal?.throwIfAborted();
+    const shot = await compressPngForWire(png, options);
+    const { width, height } = imageSize(shot.buffer);
+    return { ...shot, width, height };
 }
 
 export { capturePng, captureCompressed, runFile };

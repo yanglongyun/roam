@@ -4,6 +4,7 @@ import read from "./functions/read.js";
 import write from "./functions/write.js";
 import edit from "./functions/edit.js";
 import browser from "./functions/browser.js";
+import computer from "./functions/computer.js";
 
 export default async function runTool(toolCall, config, signal) {
   signal?.throwIfAborted();
@@ -28,6 +29,8 @@ export default async function runTool(toolCall, config, signal) {
         return await edit(args, config, signal);
       case "browser":
         return await browser(args, config, signal);
+      case "computer":
+        return await computer(args, config, signal);
       default:
         throw new Error(`没有这个工具：${toolCall.name}`);
     }

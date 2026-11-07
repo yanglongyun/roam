@@ -13,6 +13,10 @@ async function dispatch(message) {
         return;
     }
     if (t === 'connection.ready' || t === 'connection.devices') return;
+    if (t === 'web.left') {
+        if (message.data?.clientId) screen.releaseClient(message.data.clientId);
+        return;
+    }
 
     // 有网页登录成功：把这台设备的终端快照单独发给它。
     if (t === 'web.joined') {
@@ -36,7 +40,7 @@ async function dispatch(message) {
     if (t.startsWith('status.')) {
         if (await status.handle(message)) return;
     }
-    if (t === 'tool.call') {
+    if (t === 'tool.call' || t === 'tool.cancel') {
         if (await agent.handle(message)) return;
     }
 

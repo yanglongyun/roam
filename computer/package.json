@@ -11,6 +11,8 @@
     "start": "node index.js"
   },
   "dependencies": {
+    "image-size": "^2.0.4",
+    "koffi": "^3.3.6",
     "node-pty": "^1.0.0",
     "ws": "^8.14.0"
   },

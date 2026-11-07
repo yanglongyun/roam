@@ -1,0 +1,70 @@
+import assert from 'node:assert/strict';
+import { createScreenService, validateInput } from '../services/screen/session.js';
+let checks = 0;
+const check = (name, fn) => { fn(); checks++; console.log(`✓ ${name}`); };
+const results = [], inputs = [];
+let now = 1000;
+let display = { id:1, x:0, y:0, width:1440, height:932 };
+let captureImpl = async () => ({ buffer:Buffer.from('image'), mime:'image/jpeg', width:1568, height:1015 });
+let permission = true;
+const service = createScreenService({ now: () => now,
+    capture: (options) => captureImpl(options),
+    send: (client, result) => results.push({client,...result}),
+    driver: { display: () => display, status: () => ({supported:true,allowed:permission}),
+        input: (input, bounds) => { if (!permission) throw Object.assign(new Error('需要辅助功能权限'),{code:'CONTROL_PERMISSION'}); inputs.push({input,bounds}); },
+        permission: () => ({supported:true,allowed:permission}) },
+});
+const { handle } = service;
+let counter = 0;
+const request = async (action,args={},client='one') => {const reqId=String(++counter); await handle({type:'screen.request',meta:{clientId:client},data:{reqId,action,...args}});return results.find((r)=>r.reqId===reqId);};
+const click = {type:'click',x:0.5,y:0.25,button:'left',count:1};
+const first = await request('capture');
+check('截图只回复请求网页，返回独立画面编号和控制状态',()=>{assert.equal(first.client,'one');assert.equal(first.mime,'image/jpeg');assert.ok(first.frameId);assert.equal(first.control.allowed,true);});
+let second=await request('capture');
+await request('input',{frameId:first.frameId,input:click});
+check('新截图在途时，仍可操作上一张已显示的画面',()=>{assert.equal(inputs.length,1);assert.deepEqual(inputs[0],{input:click,bounds:display});});
+const foreign=await request('input',{frameId:second.frameId,input:click},'two');
+check('不能操作其他网页的画面',()=>assert.equal(foreign.code,'STALE_FRAME'));
+const consumed=await request('input',{frameId:second.frameId,input:click});
+check('桌面被操作后旧画面失效，避免多个任务或网页交错点击',()=>assert.equal(consumed.code,'STALE_FRAME'));
+second=await request('capture');
+const invalid=await request('input',{frameId:second.frameId,input:{...click,x:NaN}});
+check('无效坐标被拒绝，不执行输入',()=>{assert.equal(invalid.code,'INVALID_INPUT');assert.equal(inputs.length,1);});
+display={...display,width:1920};
+const changed=await request('input',{frameId:second.frameId,input:click});
+check('显示器布局变化后拒绝旧坐标',()=>assert.equal(changed.code,'STALE_FRAME'));
+now+=61000;
+assert.equal((await request('input',{frameId:second.frameId,input:click})).code,'STALE_FRAME');
+check('过期画面不能继续操作',()=>assert.equal(inputs.length,1));
+let fresh=await request('capture');
+permission=false;
+assert.equal((await request('input',{frameId:fresh.frameId,input:{type:'text',text:'中文与 emoji 🙂'}})).code,'CONTROL_PERMISSION');
+check('缺少辅助功能权限明确返回错误，截图仍能使用',()=>assert.equal((results.at(-1)).ok,false));
+permission=true;
+fresh=await request('capture');
+await request('input',{frameId:fresh.frameId,input:{type:'text',text:'中文与 emoji 🙂'}});
+fresh=await request('capture');
+await request('input',{frameId:fresh.frameId,input:{type:'scroll',x:0.2,y:0.5,deltaX:0,deltaY:300}});
+fresh=await request('capture');
+await request('input',{frameId:fresh.frameId,input:{type:'key',key:'Enter',modifiers:[]}});
+check('文字、滚动和按键使用各自输入类型',()=>assert.deepEqual(inputs.slice(-3).map((r)=>r.input.type),['text','scroll','key']));
+check('不接受任意按键名、命令或无限滚动量',()=>{assert.throws(()=>validateInput({type:'shell',command:'echo nope'}));assert.throws(()=>validateInput({type:'key',key:'unknown',modifiers:[]}));assert.throws(()=>validateInput({type:'scroll',x:0,y:0,deltaX:0,deltaY:99999}));});
+let began, release;
+const started=new Promise(r=>began=r);
+captureImpl=({signal})=>new Promise((resolve,reject)=>{release=resolve;began();signal.addEventListener('abort',()=>reject(signal.reason));});
+const cancelled=handle({type:'screen.request',meta:{clientId:'one'},data:{reqId:'cancel',action:'capture'}});
+await started;
+const queued=handle({type:'screen.request',meta:{clientId:'one'},data:{reqId:'queued',action:'input',frameId:fresh.frameId,input:click}});
+await handle({type:'screen.cancel',meta:{clientId:'one'},data:{reqId:'queued'}});
+await handle({type:'screen.cancel',meta:{clientId:'one'},data:{reqId:'cancel'}});
+await Promise.all([cancelled,queued]);
+check('离开页面可取消在途截图和排队操作，不发送迟到画面',()=>{assert.ok(!results.some((r)=>['cancel','queued'].includes(r.reqId)));assert.equal(inputs.length,4);});
+let active=0,maximum=0;
+captureImpl=async()=>{active++;maximum=Math.max(active,maximum);await new Promise(r=>setTimeout(r,10));active--;return {buffer:Buffer.from('image'),mime:'image/jpeg'};};
+await Promise.all([request('capture'),request('capture',{},'two')]);
+check('多网页截图在设备端串行，不启动重叠截图进程',()=>assert.equal(maximum,1));
+const orphaned = await request('capture');
+service.releaseClient('one');
+const closed = await request('input',{frameId:orphaned.frameId,input:click});
+check('网页断开后清除其画面，不能再操作旧会话',()=>assert.equal(closed.code,'STALE_FRAME'));
+console.log(`\n${checks} 项屏幕服务检查全部通过`);
