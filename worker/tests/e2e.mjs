@@ -27,7 +27,9 @@ const model = http.createServer(async (req, res) => {
   let body = '';
   for await (const chunk of req) body += chunk;
   try { requests.push(JSON.parse(body)); } catch { requests.push(null); }
-  const round = rounds.shift();
+  const round = requests.at(-1)?.instructions?.includes('现在是任务状态通知触发的回复')
+    ? { response: { status: 'completed', output: [say('已收到任务结果')] } }
+    : rounds.shift();
   if (!round) {
     res.writeHead(500).end('no more rounds');
     return;
@@ -163,8 +165,9 @@ check('云端描述不被电脑端上报覆盖', after.name === '甲号机' && a
 
 /* ── 4. 配置 + 会话：会话不绑设备 ── */
 await agentRequest(web, 'config.put', { responsesUrl: 'http://127.0.0.1:9611/v1/responses', apiKey: 'sk-e2e', model: 'mock-model', workdir: '/tmp' });
-const sessA = await agentRequest(web, 'sessions.create', {});
-check('sessions.create 不带设备字段', typeof sessA.id === 'string' && !('device_id' in sessA));
+check('独立对话创建接口已关闭', /独立对话已移除/.test(await agentFail(web, 'sessions.create', {})));
+const sessA = await agentRequest(web, 'router.open', {});
+check('助理固定会话不绑定设备', sessA.id === 'router' && !('device_id' in sessA));
 const opened = await agentRequest(web, 'sessions.open', { id: sessA.id });
 check('sessions.open 不带设备字段', !('device_id' in opened));
 
@@ -180,63 +183,57 @@ async function runTurn(sid, outputs, text = 'go') {
   return events(sid).filter((e) => e.type === 'function_call_output' && e.item).map((e) => JSON.parse(e.item.output));
 }
 
-// 5a 两台在线、不带 device → 失败并列出在线设备，谁也不执行；带 device=甲 → 甲执行
+// 助理只能安排任务与查云端数据，不能直接执行设备工具。
 let outs = await runTurn(sessA.id, [
-  round([
-    call('c0', 'shell', { command: 'echo 0' }),
-    call('c1', 'shell', { command: 'echo 1', device: DEV_A }),
-  ]),
+  round([call('no-shell', 'shell', { command: 'echo 0', device: DEV_A }),
+    call('sql-check', 'sql', { sql: 'SELECT ? AS value', params: ['参数正常'] })]),
   round([say('ok')]),
 ]);
-const last1 = outs.slice(-2);
-check('多台在线不带 device 时失败并列出设备', last1[0]?.success === false && /必须在 device 参数里指定/.test(last1[0]?.text || '') && last1[0].text.includes(DEV_A) && last1[0].text.includes(DEV_B), last1[0]?.text);
-check('device=甲 时甲执行', devA.calls.length === 1 && devB.calls.length === 0 && last1[1]?.text?.includes('设备甲'), last1[1]?.text);
-check('发给设备的参数里不含 device 字段', devA.calls[0] && !('device' in devA.calls[0].arguments));
+check('助理调用设备工具被拒绝', outs.at(-2)?.success === false && devA.calls.length === 0 && devB.calls.length === 0);
+check('助理 SQL 正确保留绑定参数', /参数正常/.test(outs.at(-1)?.text || ''));
 const prompt = requests.at(-1)?.instructions || '';
-check('系统提示里有两台设备的 id，且没有默认设备的说法', prompt.includes(DEV_A) && prompt.includes(DEV_B) && !prompt.includes('默认设备'), prompt.slice(0, 200));
-outs = await runTurn(sessA.id, [
-  round([call('s1', 'sql', { sql: "SELECT COUNT(*) AS n FROM settings WHERE key = 'system'" })]),
-  round([say('ok')]),
-]);
-check('保存设置时和默认值相同的提示词不入库', /"n":0/.test(outs.at(-1)?.text || ''), outs.at(-1)?.text);
+check('助理上下文有两台设备和描述', prompt.includes(DEV_A) && prompt.includes(DEV_B) && prompt.includes('云端改的描述'));
+check('多台在线时手动创建必须指定设备', /必须在 device 参数里指定/.test(await agentFail(web, 'tasks.dispatch', { title: '选择设备验证', goal: '未选择设备' })));
+check('不存在设备不能创建任务', /设备不存在/.test(await agentFail(web, 'tasks.dispatch', { title: '设备不存在验证', goal: '设备不存在', device: 'ghost-device' })));
 
-// 5b 带 device=乙 → 乙执行；不存在 / 离线 → 失败且谁也不执行
-outs = await runTurn(sessA.id, [
-  round([
-    call('c2', 'shell', { command: 'echo 2', device: DEV_B }),
-    call('c3', 'read', { path: '/x', device: 'ghost-device' }),
-  ]),
-  round([say('ok')]),
-]);
-const last2 = outs.slice(-2);
-check('device=乙 时乙执行', devB.calls.length === 1 && last2[0]?.success === true && last2[0]?.text?.includes('设备乙'), last2[0]?.text);
-check('device 不存在时失败', last2[1]?.success === false && /设备不存在/.test(last2[1]?.text || ''), last2[1]?.text);
-check('不存在的设备没有落到别的设备', devA.calls.length === 1 && devB.calls.length === 1);
+async function runTask(device, outputs, goal = '手动创建并完成这个目标') {
+  rounds.push(...outputs);
+  const dispatched = await agentRequest(web, 'tasks.dispatch', { title: '手动任务验证', goal, ...(device ? { device } : {}) });
+  await web.waitFor((m) => m.type === 'agent.event' && m.data?.session_id === dispatched.task_id && m.data?.type === 'done', 30000, 'task done');
+  // 等自动汇报收尾，下一次模型脚本不与助理争用。
+  for (let i = 0; i < 100; i++) {
+    const history = await agentRequest(web, 'sessions.open', { id: 'router' });
+    if (!history.running && history.messages.some((m) => m.task_id === dispatched.task_id)) break;
+    await wait(50);
+  }
+  return dispatched.task_id;
+}
+const firstGoal = '手动创建的完整目标，完成后需要自动通知助理';
+const taskA = await runTask(DEV_A, [
+  round([call('a-shell', 'shell', { command: 'echo 1', device: DEV_B })]),
+  round([say('甲已完成')]),
+], firstGoal);
+check('手动任务固定在甲执行，忽略工具里的其他设备', devA.calls.length === 1 && devB.calls.length === 0);
+check('发给设备的参数不含 device 字段', !('device' in devA.calls[0].arguments));
+const taskRequest = requests.find((r) => r.instructions?.includes(firstGoal));
+check('任务首轮输入保存完整目标', taskRequest?.input?.[0]?.content?.[0]?.text === firstGoal);
+check('任务工具无 device 选择和云端 SQL', taskRequest.tools.every((tool) => !tool.parameters?.properties?.device && tool.name !== 'sql'));
+const taskB = await runTask(DEV_B, [round([call('b-shell', 'shell', { command: 'echo 2' })]), round([say('乙已完成')])]);
+check('选择乙的手动任务在乙执行', devB.calls.length === 1);
 
-// 5c 乙断开：指定乙的调用失败；只剩甲在线时不带 device 就在甲执行
 devB.close();
 await wait(500);
-outs = await runTurn(sessA.id, [
-  round([
-    call('c4', 'shell', { command: 'echo 4', device: DEV_B }),
-    call('c5', 'shell', { command: 'echo 5' }),
-  ]),
-  round([say('ok')]),
-]);
-const last3 = outs.slice(-2);
-check('离线设备的工具失败并说明离线', last3[0]?.success === false && /离线/.test(last3[0]?.text || ''), last3[0]?.text);
-check('只剩一台在线时不带 device 在它上面执行', last3[1]?.success === true && devA.calls.length === 2 && last3[1]?.text?.includes('设备甲'), last3[1]?.text);
-
-// 5d 全部离线：模型只拿到 sql；设备工具直接失败
+check('离线设备不能创建任务', /离线/.test(await agentFail(web, 'tasks.dispatch', { title: '离线验证', goal: '离线设备', device: DEV_B })));
+const taskDefault = await runTask('', [round([call('default-shell', 'shell', { command: 'echo 3' })]), round([say('唯一设备已完成')])]);
+check('只有甲在线时可自动选择甲', devA.calls.length === 2 && devB.calls.length === 1);
 devA.close();
 await wait(500);
 const st2 = await agentRequest(web, 'status.get');
-check('全部离线时 device_online=false', st2.device_online === false && st2.devices.every((d) => !d.online));
-outs = await runTurn(sessA.id, [
-  round([call('c6', 'shell', { command: 'echo 6' })]),
-  round([say('设备不在')]),
-]);
-check('全部离线时工具失败不炸', outs.at(-1)?.success === false && /离线/.test(outs.at(-1)?.text || ''), outs.at(-1)?.text);
+check('全部离线时状态正确', st2.device_online === false && st2.devices.every((d) => !d.online));
+check('全部离线时不能创建任务', /离线/.test(await agentFail(web, 'tasks.dispatch', { title: '无设备验证', goal: '无在线设备' })));
+await runTurn(sessA.id, [round([say('可以继续交谈，执行任务需要在线设备')])]);
+check('全部设备离线时仍能与助理交谈', events(sessA.id).some((e) => e.item?.content?.[0]?.text?.includes('可以继续交谈')));
+for (const id of [taskA, taskB, taskDefault]) await agentRequest(web, 'sessions.delete', { id });
 
 /* ── 6. 设备重连后 drain 只影响自己：甲回来，乙留着离线 ── */
 const devA2 = fakeDevice(DEV_A, '设备甲');

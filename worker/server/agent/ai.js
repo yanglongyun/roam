@@ -63,10 +63,13 @@ export async function boundedBody(response, limit) {
 }
 
 // 把本次请求里的 /api/images/xxx 换成 data URL；原消息和事件仍保留短地址。
-async function prepareImages(env, messages, signal) {
+export async function prepareImages(env, messages, signal) {
   const withImage = (parts) =>
     Array.isArray(parts) && parts.some((part) => part.type === 'input_image' && nameOf(part.image_url));
   const input = [];
+  const computerCalls = new Set(messages.filter((item) => item.type === 'function_call' && item.name === 'computer').map((item) => item.call_id));
+  const observations = messages.filter((item) => item.type === 'function_call_output' && computerCalls.has(item.call_id) && withImage(item.output));
+  const recent = new Set(observations.slice(-2));
   for (const item of messages) {
     signal?.throwIfAborted();
     const parts = item.type === 'function_call_output' ? item.output : item.content;
@@ -78,6 +81,11 @@ async function prepareImages(env, messages, signal) {
     for (const part of parts) {
       const name = part.type === 'input_image' ? nameOf(part.image_url) : null;
       if (name) {
+        // 桌面只向模型传最近两张；完整记录仍留在会话中，不反复发送全部历史截图。
+        if (computerCalls.has(item.call_id) && !recent.has(item)) {
+          content.push({ type: 'input_text', text: '[较早的桌面截图已省略，请依据最新画面操作]' });
+          continue;
+        }
         // 图片已被删掉或这个部署没有 R2：换成一句说明，别让整次请求失败。
         try {
           content.push({ ...part, image_url: await dataUrl(env, name) });

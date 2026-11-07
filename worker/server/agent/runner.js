@@ -1,7 +1,5 @@
-// 工具分发：sql 在云端直接跑；其余工具转给设备，图片结果存进 R2 再回给模型。
-// 目标设备 = 工具参数里的 device；没填时只有一台在线就用它，多台在线必须指定。
-// 指定的设备不存在或离线直接失败，绝不落到别的设备。
-import { runSql } from './sql.js';
+// 任务的设备工具分发：只在绑定设备上执行，图片结果存进 R2。
+// pickTarget 供创建任务时选择设备，不参与任务运行中的工具路由。
 import { imagesEnabled, saveImage } from './images.js';
 import { DEVICE_TOOLS } from './tools.js';
 
@@ -20,7 +18,7 @@ function label(device) {
   return device.name || device.host || device.id;
 }
 
-function pickTarget(list, requested, name) {
+export function pickTarget(list, requested, name) {
   const id = typeof requested === 'string' ? requested.trim() : '';
   if (id) {
     const target = list.find((device) => device.id === id);
@@ -35,25 +33,43 @@ function pickTarget(list, requested, name) {
   throw new Error(`有 ${online.length} 台设备在线，必须在 device 参数里指定设备 id：${names}`);
 }
 
+// 任务绑定的那台设备：不存在或离线都直接失败，不会落到别的设备上。
+function boundTarget(list, id, name) {
+  const target = list.find((device) => device.id === id);
+  if (!target) throw new Error(`任务绑定的设备不存在：${id}`);
+  if (!target.online) throw new Error(`任务绑定的设备「${label(target)}」离线，无法执行 ${name}`);
+  return target;
+}
+
 // devices 是函数：每次工具调用时现取设备清单和在线状态，回复期间设备可能上下线。
-export function createRunner({ env, bridge, sendToDevice, sessionId, devices = () => [] }) {
+// boundDeviceId：任务用。派发时就把设备绑死，工具参数里的 device 一律忽略。
+export function createRunner({
+  env,
+  bridge,
+  sendToDevice,
+  sessionId,
+  devices = () => [],
+  boundDeviceId = '',
+  // 任务自带的独立工作目录，优先于全局设置。
+  workdir = '',
+}) {
   return async (call, context) => {
     const signal = context?.signal;
     signal?.throwIfAborted();
     try {
       const args = parseArgs(call.arguments);
 
-      if (call.name === 'sql') {
-        const result = await runSql(env.DB, args);
-        return { text: JSON.stringify(result) };
-      }
-
       if (!DEVICE_TOOLS.has(call.name)) {
         throw new Error(`没有这个工具：${call.name}`);
       }
 
-      const { device: requested, ...rest } = args;
-      const target = pickTarget(devices(), requested, call.name);
+      if (!boundDeviceId) throw new Error('任务没有绑定执行设备');
+      const { device: _ignored, ...rest } = args;
+      const target = boundTarget(devices(), boundDeviceId, call.name);
+      if (call.name === 'computer') {
+        if (target.platform !== 'darwin') throw new Error('桌面操作目前仅支持 macOS');
+        if (!imagesEnabled(env)) throw new Error('桌面操作需要绑定图片存储，模型必须能看到截图');
+      }
 
       const result = await bridge.call({
         deviceId: target.id,
@@ -64,7 +80,7 @@ export function createRunner({ env, bridge, sendToDevice, sessionId, devices = (
         timeoutMs: (context?.config?.timeout || 120) * 1000,
         // 工作目录、超时、输出上限由云端设置说了算，设备只负责按参数执行。
         config: {
-          workdir: context?.config?.workdir || '',
+          workdir: workdir || context?.config?.workdir || '',
           timeout: context?.config?.timeout || 120,
           max_output: context?.config?.max_output || 30000,
           // 浏览器插件按对话建标签组，组名用对话标题。

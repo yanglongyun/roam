@@ -44,14 +44,19 @@ export class DeviceBridge {
     if (signal?.aborted) throw signal.reason;
     const callId = crypto.randomUUID();
     return new Promise((resolve, reject) => {
+      const cancel = () => {
+        try { send(deviceId, { type: 'tool.cancel', to: 'desktop', data: { call_id: callId } }); } catch {}
+      };
       const timer = setTimeout(() => {
         this.pending.delete(callId);
-        reject(Object.assign(new Error(`设备执行超时：${name}`), { code: 'tool_timeout' }));
+        cancel();
+        done(reject)(Object.assign(new Error(`设备执行超时：${name}`), { code: 'tool_timeout' }));
       }, timeoutMs);
       const onAbort = () => {
         this.pending.delete(callId);
         clearTimeout(timer);
-        reject(signal.reason);
+        cancel();
+        done(reject)(signal.reason);
       };
       signal?.addEventListener('abort', onAbort, { once: true });
       const done = (fn) => (value) => {

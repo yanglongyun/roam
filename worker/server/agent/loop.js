@@ -24,7 +24,7 @@ export async function run({
   let stage = 'model';
   let failure;
   try {
-    for (;;) {
+    agentLoop: for (;;) {
       signal?.throwIfAborted();
 
       if (Number.isFinite(usage?.total_tokens) && usage.total_tokens >= config.compact_at) {
@@ -72,7 +72,7 @@ export async function run({
           calls.push(item);
         }
       }
-      usage = response.usage || null;
+      usage = response.usage ? { ...response.usage, model } : null;
       tokens = null;
       if (Number.isFinite(usage?.total_tokens) && usage.total_tokens >= 0) {
         tokens = usage.total_tokens;
@@ -87,10 +87,14 @@ export async function run({
         signal?.throwIfAborted();
         const output = await runTool(call, { env, config, scope, signal });
         signal?.throwIfAborted();
+        // 图片短地址必须写进文本：只放在 input_image 里的话模型看不到链接，没法在回复里贴图。
+        const text = output.imageURL
+          ? `${output.text ? `${output.text}\n` : ''}图片地址：${output.imageURL}（可直接贴进回复）`
+          : output.text;
         const item = {
           type: 'function_call_output',
           call_id: call.call_id,
-          output: JSON.stringify({ success: !output.failed, text: output.text }),
+          output: JSON.stringify({ success: !output.failed, text }),
         };
         if (output.imageURL) {
           item.output = [
@@ -101,6 +105,10 @@ export async function run({
         // 工具结果也追加到同一数组，下一轮模型请求直接使用。
         messages.push(item);
         await onEvent({ type: 'function_call_output', item });
+        if (output.stop) {
+          stopReason = output.stopReason;
+          break agentLoop;
+        }
       }
     }
   } catch (error) {
@@ -129,5 +137,5 @@ export async function run({
     }
     await onEvent(done);
   }
-  return { text, tokens, status, stopReason };
+  return { text, tokens, status, stopReason, error: failure?.error };
 }

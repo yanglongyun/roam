@@ -145,9 +145,9 @@ export async function runSql(db, args) {
 // 给模型看的表结构说明，跟着工具定义一起送过去。
 export const SCHEMA_HINT = `
 表与视图：
-- sessions(id, title, pin, created_at, updated_at)
-- messages(id, session_id, item, usage, created_at)  item 是模型 item 的 JSON
-- compactions(id, session_id, message_id, summary, created_at)
+- sessions(id, title, pin, system_prompt, created_at, updated_at)  system_prompt 是会话级提示词覆盖，JSON 编码字符串，空则用设置里的
+- messages(id, session_id, item, usage, created_at)  item 是模型 item 的 JSON；usage 是这次调用的 token 用量（含 model 字段），金额不存库、按单价现算
+- compactions(id, session_id, message_id, summary, usage, created_at)
 - devices(id, name, description, platform, arch, host, username, workdir, browser, last_seen, created_at)  已接入过的设备
 - settings(key, value, updated_at)
 - images(id, session_id, mime, size, created_at)
@@ -155,8 +155,12 @@ export const SCHEMA_HINT = `
 - v_messages(id, session_id, kind, role, tool_name, text, payload, call_id, created_at)
     kind: message(对话正文) / reasoning(思考) / function_call(工具调用) / function_call_output(工具结果)
     text: message 与 reasoning 的正文；payload: 工具名对应参数或结果（JSON 字符串）
-- v_compactions(id, session_id, message_id, summary, created_at)
+- v_compactions(id, session_id, message_id, summary, usage, created_at)
 - v_devices(id, name, description, platform, host, username, workdir, browser, last_seen)
+- tasks(id, title, pinned, status, progress, device_id, workdir, budget, steps, cost, created_at, updated_at, finished_at)  任务的控制面，id 就是它那个会话的 id；title 空则回退到会话标题，pinned=1 是常驻置顶（和 sessions.pin 的会话置顶无关）
+    status: queued / running / needs_human / done / failed / cancelled / interrupted
+- v_tasks(id, title, pinned, goal, status, progress, device_id, workdir, steps, cost, created_at, updated_at, finished_at, message_count)  title 是简短标题，goal 是创建时的完整目标
+- task_notifications(id, task_id, status, payload, created_at, message_id, delivered_at, attempts, next_attempt_at, last_error)  任务结果的持久化投递队列，助理处理成功后写 delivered_at
 时间戳是毫秒，用 datetime(created_at / 1000, 'unixepoch', 'localtime') 转可读时间。
 写入注意：delete / update 没有撤销，动手前先用 SELECT 确认影响范围；改 messages.item 会直接改变模型读到的上下文。
 `.trim();

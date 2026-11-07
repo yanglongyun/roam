@@ -64,6 +64,6 @@ export default async function compact({
     item: message(renderPrompt(config.compact_prefix, scope) + summary),
     start: 0,
     end: count,
-    usage: response.usage || null,
+    usage: response.usage ? { ...response.usage, model } : null,
   };
 }

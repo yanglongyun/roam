@@ -1,6 +1,6 @@
 // 持久化层：配置（settings）、设备登记（devices）、会话与消息。
 // 全部 async —— D1 没有同步接口，调用方都要 await。
-import { PREVIOUS_SYSTEMS, defaults, validateConfig } from './config.js';
+import { defaults, validateConfig } from './config.js';
 import { all, batch, first, one, run, statement } from './db.js';
 import { decryptValue, encryptValue } from './crypto.js';
 
@@ -29,6 +29,7 @@ export async function loadConfig(env) {
   const config = defaults();
   const stored = {};
   for (const row of rows) {
+    if (row.key === 'system') continue; // 已移除的普通对话提示词仅保留历史设置记录。
     if (row.key === 'apiKey') {
       stored.apiKey = await decryptValue(settingsSecret(env), row.value);
       continue;
@@ -39,7 +40,14 @@ export async function loadConfig(env) {
       /* 坏行跳过，用默认值兜底。 */
     }
   }
-  if (PREVIOUS_SYSTEMS.includes(stored.system)) delete stored.system;
+  // 单价表按模型合并：老设置里少几个模型时，默认表里新增的模型仍然可用。
+  if (stored.pricing && typeof stored.pricing === 'object' && !Array.isArray(stored.pricing)) {
+    stored.pricing = {
+      ...config.pricing,
+      ...stored.pricing,
+      models: { ...config.pricing.models, ...(stored.pricing.models || {}) },
+    };
+  }
   Object.assign(config, stored);
   validateConfig(config);
   return config;
@@ -86,8 +94,10 @@ export function publicConfig(config) {
     key_set: Boolean(config.apiKey),
     key_hint: keyHint,
     model: config.model,
+    pricing: config.pricing,
     context_window: config.context_window,
-    system: config.system,
+    router_system: config.router_system,
+    task_system: config.task_system,
     compact_at: config.compact_at,
     keep: config.keep,
     compact_system: config.compact_system,
@@ -179,6 +189,10 @@ export async function removeDevice(env, args) {
 
 const PAGE = 50;
 
+// 任务的会话有自己的列表（tasks.list），助理走单独入口，都不混进对话列表。
+const NOT_TASK =
+  "NOT EXISTS (SELECT 1 FROM tasks t WHERE t.id = sessions.id) AND sessions.id != 'router'";
+
 const PREVIEW_SQL = `sessions.*, (
   SELECT item FROM messages WHERE session_id = sessions.id ORDER BY id LIMIT 1
 ) AS first`;
@@ -209,11 +223,11 @@ export async function listSessions(env, args, running = new Set()) {
   if (before === null) {
     pinned = await all(
       env,
-      `SELECT ${PREVIEW_SQL} FROM sessions WHERE pin IS NOT NULL ORDER BY pin`,
+      `SELECT ${PREVIEW_SQL} FROM sessions WHERE pin IS NOT NULL AND ${NOT_TASK} ORDER BY pin`,
     );
     rows = await all(
       env,
-      `SELECT ${PREVIEW_SQL} FROM sessions WHERE pin IS NULL
+      `SELECT ${PREVIEW_SQL} FROM sessions WHERE pin IS NULL AND ${NOT_TASK}
        ORDER BY updated_at DESC, id DESC LIMIT ?`,
       [PAGE + 1],
     );
@@ -221,7 +235,7 @@ export async function listSessions(env, args, running = new Set()) {
     rows = await all(
       env,
       `SELECT ${PREVIEW_SQL} FROM sessions
-       WHERE pin IS NULL AND (updated_at < ? OR (updated_at = ? AND id < ?))
+       WHERE pin IS NULL AND ${NOT_TASK} AND (updated_at < ? OR (updated_at = ? AND id < ?))
        ORDER BY updated_at DESC, id DESC LIMIT ?`,
       [before, before, String(beforeId), PAGE + 1],
     );
@@ -266,7 +280,11 @@ export async function openSession(env, args, runState = null) {
   await requireSession(env, id);
   const rows = await all(
     env,
-    'SELECT * FROM messages WHERE session_id = ? ORDER BY id DESC LIMIT 61',
+    `SELECT m.*, n.id AS notification_id, n.task_id, n.status AS task_status,
+      s.title AS task_title FROM messages m
+      LEFT JOIN task_notifications n ON n.message_id = m.id
+      LEFT JOIN sessions s ON s.id = n.task_id
+      WHERE m.session_id = ? ORDER BY m.id DESC LIMIT 61`,
     [id],
   );
   const messages = rows
@@ -348,8 +366,13 @@ export async function removeSession(env, args, running = new Set()) {
   // 会话用到的图片：上传时记了 session_id，工具产出的图也走同一个字段。
   const images = await all(env, 'SELECT id FROM images WHERE session_id = ?', [id]);
   await batch(env, [
+    statement(env, `DELETE FROM task_notifications WHERE
+      (task_id = ? AND message_id IS NULL)
+      OR message_id IN (SELECT id FROM messages WHERE session_id = ?)`, [id, id]),
     statement(env, 'DELETE FROM messages WHERE session_id = ?', [id]),
     statement(env, 'DELETE FROM compactions WHERE session_id = ?', [id]),
+    // 任务的会话删掉时，控制面那行一起删；留着会变成查不到会话的幽灵任务。
+    statement(env, 'DELETE FROM tasks WHERE id = ?', [id]),
     statement(env, 'DELETE FROM sessions WHERE id = ?', [id]),
   ]);
   return { deleted: id, images: images.map((row) => row.id) };
@@ -365,8 +388,11 @@ export async function listMessages(env, args) {
   const limit = Math.min(500, Math.max(1, limitArg));
   const rows = await all(
     env,
-    `SELECT * FROM messages WHERE session_id = ? AND (? = 0 OR id < ?)
-     ORDER BY id DESC LIMIT ?`,
+    `SELECT m.*, n.id AS notification_id, n.task_id, n.status AS task_status,
+      s.title AS task_title FROM messages m
+      LEFT JOIN task_notifications n ON n.message_id = m.id
+      LEFT JOIN sessions s ON s.id = n.task_id
+      WHERE m.session_id = ? AND (? = 0 OR m.id < ?) ORDER BY m.id DESC LIMIT ?`,
     [id, beforeArg, beforeArg, limit + 1],
   );
   const messages = rows
@@ -426,13 +452,46 @@ export async function contextMessages(env, sessionId) {
   return { latest, stored };
 }
 
-export async function addCompaction(env, sessionId, messageId, summary) {
+// usage：压缩也是一次完整的模型调用，花费要记下来（token 存库，金额按单价现算）。
+export async function addCompaction(env, sessionId, messageId, summary, usage = null) {
   const row = await first(
     env,
-    'INSERT INTO compactions (session_id, message_id, summary, created_at) VALUES (?, ?, ?, ?) RETURNING *',
-    [sessionId, messageId, summary, Date.now()],
+    'INSERT INTO compactions (session_id, message_id, summary, usage, created_at) VALUES (?, ?, ?, ?, ?) RETURNING *',
+    [sessionId, messageId, summary, usage ? JSON.stringify(usage) : null, Date.now()],
   );
   return row;
+}
+
+// 计费汇总用：每次模型调用的 usage 与时间；压缩那次也算一次调用。
+export async function usageRows(env) {
+  const [messages, compactions] = await Promise.all([
+    all(env, 'SELECT usage, created_at FROM messages WHERE usage IS NOT NULL'),
+    all(env, 'SELECT usage, created_at FROM compactions WHERE usage IS NOT NULL'),
+  ]);
+  const rows = [];
+  for (const row of [...messages, ...compactions]) {
+    try {
+      const usage = typeof row.usage === 'string' ? JSON.parse(row.usage) : row.usage;
+      if (usage && typeof usage === 'object') rows.push({ usage, created_at: row.created_at });
+    } catch {
+      /* 坏行跳过，别让一行脏数据把统计打挂。 */
+    }
+  }
+  return rows;
+}
+
+// 会话级提示词覆盖：sessions.system_prompt 存的是 JSON 编码字符串，处理方式和 settings.value 一样。
+// 没设、空、坏值都当没有，交给 settings.system_prompt / 内置 router_system 兜底。
+export async function sessionSystemPrompt(env, sessionId) {
+  if (typeof sessionId !== 'string') return '';
+  const session = await one(env, 'SELECT system_prompt FROM sessions WHERE id = ?', [sessionId]);
+  if (!session || session.system_prompt === null || session.system_prompt === undefined) return '';
+  try {
+    const value = JSON.parse(session.system_prompt);
+    return typeof value === 'string' ? value : '';
+  } catch {
+    return '';
+  }
 }
 
 // 对话标题：用户起的标题，没有就用第一句话。浏览器插件用它命名标签组。
