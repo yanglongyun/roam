@@ -1,15 +1,18 @@
 <script setup>
 import { computed, ref } from 'vue';
-import { useAgentStore } from '@/stores/agent';
+import { useConversation } from '@/lib/agent/conversation';
 import { useWsStore } from '@/stores/ws';
 import { useToastStore } from '@/stores/toast';
 import Icon from './Icon.vue';
 
-const agent = useAgentStore();
+const agent = useConversation();
 const ws = useWsStore();
 const toast = useToastStore();
 
-const text = ref('');
+const text = computed({
+    get: () => agent.drafts[agent.currentId || '__draft__'] || '',
+    set: (value) => { agent.drafts[agent.currentId || '__draft__'] = value; },
+});
 const images = ref([]); // [{ name, url(Data URL) }]
 const reading = ref(false);
 const taRef = ref(null);
@@ -17,10 +20,18 @@ const fileRef = ref(null);
 let imageVersion = 0;
 
 const TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
-const canSend = computed(() => ws.showActions && agent.ready && !agent.busy && !reading.value
+// 任务会话里发话 = 追加指令，任务正在跑也能发。
+const steering = computed(() => Boolean(agent.currentTask));
+const canSend = computed(() => ws.showActions && agent.ready && (!agent.busy || steering.value) && !reading.value
     && (text.value.trim().length > 0 || images.value.length > 0));
-// Worker 没绑 R2 时不能收发图片：藏起按钮，粘贴图片给个提示。
-const imagesOff = computed(() => agent.status?.images === false);
+// Worker 没绑 R2 时不能收发图片：藏起按钮，粘贴图片给个提示。任务会话只收文字指令。
+const imagesOff = computed(() => agent.status?.images === false || steering.value);
+const hint = computed(() => {
+    if (!ws.showActions) return '等待连接…';
+    if (steering.value) return '给这个任务追加指令，回车发送';
+    if (agent.kind === 'assistant') return '告诉助理要做什么，回车发送';
+    return '发消息，回车发送，Shift+回车换行';
+});
 
 function readFile(file) {
     return new Promise((resolve, reject) => {
@@ -118,7 +129,7 @@ function autoGrow(event) {
                 ref="taRef"
                 v-model="text"
                 rows="1"
-                :placeholder="ws.showActions ? '发消息，回车发送，Shift+回车换行' : '等待连接…'"
+                :placeholder="hint"
                 :disabled="!ws.showActions"
                 @keydown="onKeydown"
                 @input="autoGrow"
@@ -137,7 +148,7 @@ function autoGrow(event) {
                 <button v-if="agent.busy" class="send-btn stop" :disabled="agent.stopping" title="停止" @click="agent.stopRun()">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2" /></svg>
                 </button>
-                <button v-else class="send-btn" :disabled="!canSend" title="发送" @click="submit">
+                <button v-if="!agent.busy || steering" class="send-btn" :disabled="!canSend" title="发送" @click="submit">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5 M5 12l7-7 7 7" /></svg>
                 </button>
             </div>

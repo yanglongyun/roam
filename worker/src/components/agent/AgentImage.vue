@@ -1,14 +1,14 @@
 <script setup>
 // 消息里的图片地址 /api/images/<文件名> 存在云端 R2，经助理 store 取回成 blob 地址再显示
 import { ref, watchEffect } from 'vue';
-import { useAgentStore } from '@/stores/agent';
+import { useConversation } from '@/lib/agent/conversation';
 
 const props = defineProps({
     src: { type: String, required: true },
     alt: { type: String, default: '图片' },
 });
 
-const agent = useAgentStore();
+const agent = useConversation();
 const url = ref('');
 const failed = ref(false);
 

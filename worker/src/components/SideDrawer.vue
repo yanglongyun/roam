@@ -3,7 +3,6 @@ import { computed, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { useViewStore } from '@/stores/view';
 import { useWsStore } from '@/stores/ws';
-import SessionList from '@/components/agent/SessionList.vue';
 import TerminalList from '@/components/terminal/TerminalList.vue';
 import NewTerminalModal from '@/components/terminal/NewTerminalModal.vue';
 
@@ -37,8 +36,7 @@ function newTerminal() {
                 </button>
             </div>
 
-            <SessionList v-if="route.name === 'chat'" class="min-h-0 flex-1" @close="view.closeSide" />
-            <TerminalList v-else-if="route.name === 'terminal'" class="min-h-0 flex-1" @close="view.closeSide" @new="newTerminal" />
+            <TerminalList v-if="route.name === 'terminal'" class="min-h-0 flex-1" @close="view.closeSide" @new="newTerminal" />
         </aside>
     </div>
 

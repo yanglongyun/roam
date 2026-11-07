@@ -42,6 +42,13 @@ export const useWsStore = defineStore('ws', () => {
             else localStorage.removeItem(TOKEN_KEY);
         } catch {}
     }
+    function invalidateAuth(token) {
+        // 较早的 HTTP 请求失败，不能清掉用户刚重新登录得到的新令牌。
+        if (token !== readToken()) return;
+        writeToken('');
+        authenticated.value = false;
+        authError.value = '登录已过期，请重新输入访问密码';
+    }
     function readDevice() {
         try { return localStorage.getItem(DEVICE_KEY) || ''; } catch { return ''; }
     }
@@ -223,6 +230,6 @@ export const useWsStore = defineStore('ws', () => {
         authenticated, passwordSet, authError, authClosed,
         disconnectedSince, isReconnecting, connectionLost, canUseActions,
         devices, currentDeviceId, currentDevice, onlineDevices, deviceLabel, selectDevice,
-        init, sendMsg, sendToDevice, onMessage, submitPassword,
+        init, sendMsg, sendToDevice, onMessage, submitPassword, getAuthToken: readToken, invalidateAuth,
     };
 });

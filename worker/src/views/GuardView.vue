@@ -31,8 +31,10 @@ function onSubmit() {
 
 // 登录后回到原来想去的页面（刷新深链接时带过来的 redirect），没有就进助理。
 function enterApp() {
+    // 登录页会被 keep-alive 缓存；后台重连时不能把正在看的应用切走。
+    if (router.currentRoute.value.name !== 'guard') return;
     const redirect = String(router.currentRoute.value.query.redirect || '');
-    const target = redirect.length > 1 && redirect.startsWith('/') && !redirect.startsWith('/guard') ? redirect : '/chat';
+    const target = redirect.length > 1 && redirect.startsWith('/') && !redirect.startsWith('/guard') ? redirect : '/assistant';
     router.replace(target);
 }
 

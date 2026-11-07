@@ -54,6 +54,8 @@ export function toolMeta(row) {
             return { icon: 'terminal', label: '执行', pill: oneLine(args.command) };
         case 'browser':
             return { icon: 'globe', label: '浏览器', pill: oneLine(args.method || args.url || args.action) };
+        case 'computer':
+            return { icon: 'desktop', label: { screenshot: '查看屏幕', click: '点击', scroll: '滚动', type: '输入文字', key: '按键' }[args.action] || '操作桌面', pill: args.action === 'key' ? oneLine(args.key) : '' };
         default:
             return { icon: 'terminal', label: row.name || 'tool', pill: '' };
     }

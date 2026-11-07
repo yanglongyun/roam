@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from 'vue';
-import { useAgentStore } from '@/stores/agent';
+import { useConversation } from '@/lib/agent/conversation';
 import { fmtArgs, fmtResult, isFailed, toolMeta } from '@/lib/agent/format';
 import Icon from './Icon.vue';
 import AgentImage from './AgentImage.vue';
@@ -10,7 +10,7 @@ const props = defineProps({
     compact: { type: Boolean, default: false },
 });
 
-const agent = useAgentStore();
+const agent = useConversation();
 const open = computed(() => agent.expanded[props.row.key] === true);
 const meta = computed(() => toolMeta(props.row));
 const running = computed(() => props.row.status === 'running');

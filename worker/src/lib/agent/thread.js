@@ -39,7 +39,15 @@ export function buildRows(messages, compactions = [], busy = false) {
     let compactIndex = 0;
     const summaries = [...compactions].sort((a, b) => a.message_id - b.message_id || a.id - b.id);
     const appendCompaction = (summary) => {
-        rows.push({ key: `compact:${summary.id}`, kind: 'system', code: 'compacted', content: summary.summary, at: summary.created_at });
+        rows.push({
+            key: `compact:${summary.id}`,
+            kind: 'system',
+            code: 'compacted',
+            content: summary.summary,
+            at: summary.created_at,
+            tokens: totalTokens(summary),
+            cost: summary.cost || undefined,
+        });
     };
     for (const message of messages) {
         while (compactIndex < summaries.length && message.id > 0 && summaries[compactIndex].message_id < message.id) {
@@ -50,6 +58,12 @@ export function buildRows(messages, compactions = [], busy = false) {
         const at = message.created_at;
         switch (item.type) {
             case 'message':
+                if (message.notification_id) {
+                    const label = { done: '已完成', failed: '失败', needs_human: '需要你决定', cancelled: '已取消', interrupted: '被中断' }[message.task_status] || '有更新';
+                    rows.push({ key, at, kind: 'system', code: 'task_notification', taskId: message.task_id,
+                        content: message.task_title ? `任务${label}：${message.task_title}` : `任务${label}` });
+                    break;
+                }
                 rows.push({
                     key,
                     at,
@@ -60,6 +74,7 @@ export function buildRows(messages, compactions = [], busy = false) {
                     sending: message.sending,
                     failed: message.failed,
                     tokens: totalTokens(message),
+                    cost: message.cost || undefined,
                 });
                 break;
             case 'reasoning':

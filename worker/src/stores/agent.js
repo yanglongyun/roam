@@ -1,28 +1,26 @@
 // 助理的会话状态。移植自 agentic 的 thread/store.ts：
-// 操作经 agent.request 发给 Worker（助理跑在云端），等 agent.result；回复过程经 agent.event 推来。
+// 操作经 HTTP 发给 Worker（助理跑在云端），回复过程经 WS agent.event 推来。
 import { defineStore } from 'pinia';
-import { ref, watch } from 'vue';
+import { ref, toRef, watch } from 'vue';
 import { useWsStore } from '@/stores/ws';
 import { useToastStore } from '@/stores/toast';
+import { useAgentClientStore } from '@/stores/agent-client';
 import { mergeMessages, itemText } from '@/lib/agent/thread';
-
-export const threadTitle = (thread) => thread?.title || thread?.preview || '对话';
 
 const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
 
-export const useAgentStore = defineStore('agent', () => {
+const conversationStore = (storeId, kind) => defineStore(storeId, () => {
     const ws = useWsStore();
+    const client = useAgentClientStore();
+    const { request, onEvent } = client;
     const toastStore = useToastStore();
     const toast = (text) => toastStore.show(text, 2400);
 
-    const threads = ref([]);
-    /** 列表还有更早的未置顶对话没加载。 */
-    const threadsMore = ref(false);
-    const loadingThreads = ref(false);
-    /** 置顶组的顺序（会话 ID），存在云端。 */
-    const pinOrder = ref([]);
-    const currentId = ref('');
-    const status = ref(null);
+    // 常驻助理的 id 是固定的，加载期间输入的草稿也要落到同一个会话。
+    const currentId = ref(kind === 'assistant' ? 'router' : '');
+    // 输入草稿按会话保存，离开应用或返回任务列表后再打开也不会串到别的会话。
+    const drafts = ref({});
+    const status = toRef(client, 'status');
     const messages = ref([]);
     const compactions = ref([]);
     const notes = ref([]);
@@ -30,47 +28,25 @@ export const useAgentStore = defineStore('agent', () => {
     /** 当前会话正在回复。 */
     const busy = ref(false);
     const stopping = ref(false);
+    const unread = ref(0);
+    let visible = false;
+    function setVisible(value) {
+        visible = value;
+        if (value) unread.value = 0;
+    }
     /** 本轮最近一次 error 事件的说明，done 时显示。 */
     const lastError = ref('');
     const ready = ref(false);
+    /** 当前打开的是任务会话时，这里放那个任务（见 stores/tasks.js）。 */
+    const currentTask = ref(null);
     const loadError = ref('');
     const viewSeq = ref(0);
     const hasMore = ref(false);
     const loadingOlder = ref(false);
     let generation = 0;
+    let openingEvents = null;
 
-    /* ── 请求：agent.request → agent.result ── */
-
-    const pending = new Map();
-    let seq = 0;
-
-    function request(op, args = {}, timeoutMs = 30000) {
-        return new Promise((resolve, reject) => {
-            const reqId = `a${Date.now().toString(36)}_${seq++}`;
-            const timer = setTimeout(() => {
-                pending.delete(reqId);
-                reject(new Error('云端没有响应'));
-            }, timeoutMs);
-            pending.set(reqId, { resolve, reject, timer });
-            const sent = ws.sendMsg({ type: 'agent.request', to: 'hub', data: { reqId, op, args } });
-            if (!sent) {
-                clearTimeout(timer);
-                pending.delete(reqId);
-                reject(new Error('未连接云端'));
-            }
-        });
-    }
-
-    ws.onMessage('agent.result', (msg) => {
-        const d = msg.data || {};
-        const entry = pending.get(d.reqId);
-        if (!entry) return;
-        pending.delete(d.reqId);
-        clearTimeout(entry.timer);
-        if (d.ok) entry.resolve(d.data);
-        else entry.reject(new Error(d.error || '操作失败'));
-    });
-    ws.onMessage('agent.event', (msg) => receiveEvent(msg.data || {}));
+    onEvent(receiveEvent);
 
     /* ── 图片：消息里是 /api/images/<文件名>，从云端取回，缓存成 blob 地址 ── */
 
@@ -88,35 +64,6 @@ export const useAgentStore = defineStore('agent', () => {
         return imageCache.get(url);
     }
 
-    /* ── 列表 ── */
-
-    // 列表只由列表操作加载。其他地方只改某一行自己动过的字段，不拿别的操作返回的数据整行替换。
-    function editThread(id, fields) {
-        threads.value = threads.value
-            .map((thread) => (thread.id === id ? { ...thread, ...fields } : thread))
-            .sort((a, b) => b.updated_at - a.updated_at);
-    }
-    // 事件只带会话 ID，列表里的运行状态、更新时间和预览从事件推出来。
-    // 流式增量、用量这类事件不改变列表，直接跳过。
-    function touchThread(event) {
-        const thread = threads.value.find((entry) => entry.id === event.session_id);
-        if (!thread) return;
-        const running = event.type !== 'done';
-        let savedAt = 0;
-        if (event.item) savedAt = event.created_at;
-        if (thread.running === running && !savedAt) return;
-        const fields = { running };
-        if (savedAt) fields.updated_at = savedAt;
-        if (event.type === 'message' && event.item?.role === 'user' && !thread.preview) {
-            fields.preview = itemText(event.item).replace(/\s+/g, ' ').slice(0, 60) || '[图片]';
-        }
-        editThread(thread.id, fields);
-    }
-    function dropThread(id) {
-        threads.value = threads.value.filter((thread) => thread.id !== id);
-        pinOrder.value = pinOrder.value.filter((entry) => entry !== id);
-    }
-
     /* ── 消息 ── */
 
     function noteFor(doneStatus, error) {
@@ -130,13 +77,17 @@ export const useAgentStore = defineStore('agent', () => {
         return [...saved, ...list.filter((entry) => entry.id === 0)];
     }
     // 收到一个完整 item：按数据库 ID 合并。流式行和发送中的用户消息由它接替，保留原来的 key。
-    function addItem(item, id, createdAt) {
-        if (messages.value.some((entry) => entry.id === id)) return;
-        const index = messages.value.findIndex(
-            (entry) => (entry.streaming && entry.item.type === item.type)
-                || (entry.sending && item.type === 'message' && item.role === 'user'),
-        );
-        const row = { id, item, created_at: createdAt };
+    function addItem(item, id, createdAt, metadata = {}) {
+        const pendingForItem = (entry) => (entry.streaming && entry.item.type === item.type
+            && (item.type !== 'message' || entry.item.role === item.role))
+            || (entry.sending && item.type === 'message' && item.role === 'user');
+        if (messages.value.some((entry) => entry.id === id)) {
+            // HTTP 可能已包含这条完整消息，WS 完成事件仍需清掉对应流式占位。
+            if (!metadata.notification_id) messages.value = messages.value.filter((entry) => !pendingForItem(entry));
+            return;
+        }
+        const index = metadata.notification_id ? -1 : messages.value.findIndex(pendingForItem);
+        const row = { id, item, created_at: createdAt, ...metadata };
         if (index < 0) {
             messages.value = inOrder([...messages.value, row]);
             return;
@@ -161,12 +112,24 @@ export const useAgentStore = defineStore('agent', () => {
     }
 
     function receiveEvent(event) {
-        touchThread(event);
+        if (kind === 'assistant' && event.session_id === 'router' && event.type === 'task_report') {
+            if (!visible && event.status === 'completed') {
+                unread.value++;
+                toast('助理有新的任务汇报');
+            }
+            return;
+        }
         if (event.session_id !== currentId.value) return;
+        if (openingEvents) { openingEvents.push(event); return; }
         switch (event.type) {
             case 'message':
             case 'reasoning':
-                if (event.item) addItem(event.item, event.id, event.created_at);
+                if (event.item) addItem(event.item, event.id, event.created_at, {
+                    ...(event.notification_id ? {
+                        notification_id: event.notification_id, task_id: event.task_id,
+                        task_status: event.task_status, task_title: event.task_title,
+                    } : {}),
+                });
                 else addDelta(event.type, event.delta);
                 busy.value = true;
                 return;
@@ -179,18 +142,18 @@ export const useAgentStore = defineStore('agent', () => {
                     toast('正在压缩上下文…');
                     return;
                 }
-                compactions.value = [...compactions.value, {
+                compactions.value = [...compactions.value.filter((entry) => entry.id !== event.id), {
                     id: event.id, message_id: event.message_id, summary: event.summary, created_at: event.created_at,
                 }];
                 return;
             case 'usage': {
                 // 电脑端把 usage 写在这次响应最后存下的那条上，这里同样挂到最后一条已存的消息。
                 if (!event.usage) return;
-                let index = messages.value.length - 1;
+                let index = event.message_id ? messages.value.findIndex((entry) => entry.id === event.message_id) : messages.value.length - 1;
                 while (index >= 0 && messages.value[index].id === 0) index--;
                 if (index < 0) return;
                 const next = [...messages.value];
-                next[index] = { ...next[index], usage: event.usage };
+                next[index] = { ...next[index], usage: event.usage, cost: event.cost || next[index].cost };
                 messages.value = next;
                 return;
             }
@@ -212,6 +175,7 @@ export const useAgentStore = defineStore('agent', () => {
 
     function reset() {
         generation++;
+        openingEvents = null;
         messages.value = [];
         compactions.value = [];
         notes.value = [];
@@ -227,51 +191,22 @@ export const useAgentStore = defineStore('agent', () => {
 
     async function loadStatus() {
         try {
-            status.value = await request('status.get');
+            await client.loadStatus();
             return true;
         } catch (error) {
             toast(error.message || '状态加载失败');
             return false;
         }
     }
-    // 第一页：全部置顶对话加最近更新的 50 个。
-    async function loadThreads() {
-        try {
-            const data = await request('sessions.list');
-            threads.value = data.sessions;
-            threadsMore.value = data.has_more;
-            pinOrder.value = data.sessions.filter((thread) => thread.pinned).map((thread) => thread.id);
-            return true;
-        } catch (error) {
-            toast(error.message || '会话列表加载失败');
-            return false;
-        }
-    }
-    // 列表滚到底时接着加载更早的未置顶对话，以已加载的最后一个为起点。
-    async function loadMoreThreads() {
-        const last = threads.value.filter((thread) => !thread.pinned).at(-1);
-        if (!threadsMore.value || loadingThreads.value || !last) return;
-        loadingThreads.value = true;
-        try {
-            const data = await request('sessions.list', { before: last.updated_at, before_id: last.id });
-            threads.value = [
-                ...threads.value,
-                ...data.sessions.filter((thread) => !threads.value.some((entry) => entry.id === thread.id)),
-            ];
-            threadsMore.value = data.has_more;
-        } catch (error) {
-            toast(error.message || '会话列表加载失败');
-        } finally {
-            loadingThreads.value = false;
-        }
-    }
-
     // 打开对话：一次拿到消息、压缩记录，以及正在运行时已输出的流式文字。
     async function openThread(id, force = false) {
         if (!id || (!force && currentId.value === id && (ready.value || busy.value))) return;
+        if (currentTask.value && currentTask.value.id !== id) currentTask.value = null;
         reset();
         currentId.value = id;
         const mine = generation;
+        const buffered = [];
+        openingEvents = buffered;
         try {
             const opened = await request('sessions.open', { id });
             if (generation !== mine) return;
@@ -287,30 +222,47 @@ export const useAgentStore = defineStore('agent', () => {
             compactions.value = opened.compactions;
             hasMore.value = opened.has_more;
             busy.value = opened.running;
+            openingEvents = null;
+            for (const event of buffered) {
+                const cursor = opened.event_cursor;
+                if (!cursor || !event.event_cursor || event.event_cursor.epoch !== cursor.epoch || event.event_cursor.sequence > cursor.sequence) receiveEvent(event);
+            }
             ready.value = true;
             viewSeq.value++;
         } catch (error) {
-            if (generation === mine) loadError.value = error.message || '对话加载失败';
+            if (generation === mine) {
+                openingEvents = null;
+                for (const event of buffered) receiveEvent(event);
+                loadError.value = error.message || '记录加载失败';
+            }
         }
     }
-    function createDraft() {
+    // 打开一个任务：先标成任务模式，再按会话把它打开（任务就是一个会话）。
+    function openTask(task) {
+        currentTask.value = task;
+        return openThread(task.id, true);
+    }
+    function clearTask() {
+        currentTask.value = null;
         reset();
         currentId.value = '';
-        ready.value = true;
         viewSeq.value++;
     }
     async function loadOlder() {
-        if (!currentId.value || !hasMore.value || loadingOlder.value || busy.value) return;
+        if (!currentId.value || !hasMore.value || loadingOlder.value || !messages.value.length) return;
         const mine = generation;
         loadingOlder.value = true;
         try {
             const page = await request('messages.list', { id: currentId.value, limit: 60, before: messages.value[0].id });
             if (generation === mine) {
-                messages.value = mergeMessages(page.messages, messages.value);
+                messages.value = [...mergeMessages(page.messages, messages.value.filter((entry) => entry.id > 0)),
+                    ...messages.value.filter((entry) => entry.id === 0)];
                 hasMore.value = page.has_more;
+                return true;
             }
         } catch (error) {
             toast(error.message || '历史消息加载失败');
+            return false;
         } finally {
             if (generation === mine) loadingOlder.value = false;
         }
@@ -318,7 +270,10 @@ export const useAgentStore = defineStore('agent', () => {
 
     function send(text, retryRow = null, images = []) {
         const content = text.trim();
-        if ((!content && images.length === 0) || busy.value || !ready.value) return false;
+        // 任务会话里发话 = 给它追加指令，任务正在跑也允许。
+        const steering = Boolean(currentTask.value);
+        if ((!content && images.length === 0) || !ready.value || !currentId.value) return false;
+        if (busy.value && !steering) return false;
         if (images.length > 5) {
             toast('每条消息最多发送 5 张图片');
             return false;
@@ -342,21 +297,15 @@ export const useAgentStore = defineStore('agent', () => {
     async function submit(text, images, user, mine) {
         let id = currentId.value;
         try {
-            if (!id) {
-                const session = await request('sessions.create', {});
-                if (generation !== mine) return;
-                id = session.id;
-                currentId.value = session.id;
-                threads.value = [session, ...threads.value];
-            }
             const uploaded = [];
             for (const image of images) {
                 if (image.startsWith('/api/images/')) uploaded.push(image);
                 else uploaded.push((await request('images.upload', { id, image }, 60000)).url);
             }
             if (generation !== mine) return;
-            const saved = await request('messages.send', { id, text, images: uploaded });
-            if (generation === mine) addItem(user.item, saved.id, saved.created_at);
+            const saved = await request('messages.send', { id, text, images: uploaded }, 60000);
+            // 给任务追加指令时后端返回的是任务信息，消息本身由事件补进来。
+            if (generation === mine && saved.id) addItem(user.item, saved.id, saved.created_at);
         } catch (error) {
             if (generation !== mine) return;
             toast(error.message || '发送失败');
@@ -381,80 +330,36 @@ export const useAgentStore = defineStore('agent', () => {
             toast(error.message || '停止失败');
         }
     }
-    async function renameThread(id, title) {
-        try {
-            await request('sessions.patch', { id, title });
-            editThread(id, { title });
-        } catch (error) {
-            toast(error.message || '重命名失败');
-        }
-    }
-    async function removeThread(id) {
-        try {
-            await request('sessions.delete', { id });
-            dropThread(id);
-            if (currentId.value === id) createDraft();
-            return true;
-        } catch (error) {
-            toast(error.message || '删除失败');
-            return false;
-        }
-    }
-    async function pinThread(id, pinned) {
-        try {
-            await request('sessions.patch', { id, pinned });
-            editThread(id, { pinned });
-            // 新置顶的排在置顶组最前，与电脑端一致；取消置顶就移出。
-            pinOrder.value = pinned
-                ? [id, ...pinOrder.value.filter((entry) => entry !== id)]
-                : pinOrder.value.filter((entry) => entry !== id);
-        } catch (error) {
-            toast(error.message || '置顶失败');
-        }
-    }
-    // 拖拽结束后保存置顶组的完整顺序；失败时以电脑端为准重新加载。
-    async function reorderPins(ids) {
-        const previous = pinOrder.value;
-        pinOrder.value = ids;
-        try {
-            await request('sessions.pins', { ids });
-        } catch (error) {
-            pinOrder.value = previous;
-            toast(error.message || '排序保存失败');
-            void loadThreads();
-        }
-    }
-
-    /* ── 设置 ── */
-
-    const getConfig = () => request('config.get');
-    async function saveConfig(patch) {
-        await request('config.put', patch);
-        await loadStatus();
-    }
-    // 设备登记：改名字 / 描述，删除离线设备的登记。
-    const patchDevice = (patch) => request('devices.patch', patch);
-    const removeDevice = (id) => request('devices.remove', { id });
-
     // 每次连上（包括重连）都重新拉取，补上断线期间错过的事件。
     let started = false;
     function init() {
         if (started) return;
         started = true;
-        if (!currentId.value) createDraft();
-        watch(() => ws.showActions, (online) => {
-            if (!online) return;
+        watch(() => [ws.authenticated, ws.showActions], async ([authed, live], previous) => {
+            // 已登录但实时通道断开时可以首次读取；断开瞬间保留已展示内容，重连再补快照。
+            if (!authed || (!live && previous?.[0])) return;
             void loadStatus();
-            void loadThreads();
-            if (currentId.value) void openThread(currentId.value, true);
+            if (kind === 'assistant') {
+                try {
+                    const opened = await request('router.open');
+                    if (ws.showActions) await openThread(opened.id, true);
+                } catch (error) {
+                    loadError.value = error.message || '助理加载失败';
+                }
+            } else if (currentId.value) {
+                void openThread(currentId.value, true);
+            }
         }, { immediate: true });
     }
 
     return {
-        threads, threadsMore, loadingThreads, pinOrder, currentId, status, messages, compactions, notes,
-        expanded, busy, stopping, ready, loadError, viewSeq, hasMore, loadingOlder,
-        init, imageSrc, loadStatus, loadThreads, loadMoreThreads, openThread, createDraft, loadOlder,
-        send, retrySend, stopRun, renameThread, removeThread, pinThread, reorderPins,
-        getConfig, saveConfig, patchDevice, removeDevice,
+        kind,
+        currentId, currentTask, drafts, status, messages, compactions, notes,
+        expanded, busy, stopping, unread, setVisible, ready, loadError, viewSeq, hasMore, loadingOlder,
+        init, imageSrc, request, onEvent, openTask, loadStatus, openThread, clearTask, loadOlder,
+        send, retrySend, stopRun,
     };
 });
+
+export const useAssistantStore = conversationStore('assistant', 'assistant');
+export const useTaskAgentStore = conversationStore('task-agent', 'task');

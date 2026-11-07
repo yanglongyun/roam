@@ -5,7 +5,7 @@
 //   · 轮还在进行中（或没有最终文本，比如中途停掉）→ 平铺，过程依次展示。
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import { useAgentStore } from '@/stores/agent';
+import { useConversation } from '@/lib/agent/conversation';
 import { useToastStore } from '@/stores/toast';
 import { buildRows } from '@/lib/agent/thread';
 import { dayLabel, renderMd } from '@/lib/agent/format';
@@ -14,7 +14,7 @@ import AgentImage from './AgentImage.vue';
 import TurnEntries from './TurnEntries.vue';
 import TurnFold from './TurnFold.vue';
 
-const agent = useAgentStore();
+const agent = useConversation();
 const toast = useToastStore();
 const router = useRouter();
 
@@ -89,6 +89,11 @@ const blocks = computed(() => {
         // 系统注解独立成块，不搅进轮里
         flushTurn(false);
         output.push({ kind: 'message', key: row.key, row });
+        if (row.code === 'task_notification') {
+            turnKey = row.key;
+            turnStartAt = row.at;
+            turnLastAt = undefined;
+        }
     }
     flushTurn(agent.busy);
     return output;
@@ -112,6 +117,16 @@ const showWorking = computed(() => {
     return true;
 });
 
+// 金额都很小（一次调用常常不到一分钱），按 magnitude 取有效位，避免显示成 0.00。
+function money(cost) {
+    if (!cost || !cost.amount) return '';
+    const amount = cost.amount;
+    const text = amount >= 1 ? amount.toFixed(2)
+        : amount >= 0.01 ? amount.toFixed(4).replace(/0+$/, '').replace(/\.$/, '')
+        : amount.toPrecision(2);
+    return `${cost.currency === 'USD' ? '$' : ''}${text}${cost.currency === 'USD' ? '' : ' ' + cost.currency}`;
+}
+
 async function copy(text) {
     try {
         await navigator.clipboard.writeText(text);
@@ -126,16 +141,34 @@ async function copy(text) {
 const scrollRef = ref(null);
 const innerRef = ref(null);
 let stick = true;
-let restoreFromTop = 0;
+let paging = false;
 let observer = null;
+
+async function loadMore() {
+    if (paging || agent.loadingOlder || !agent.hasMore) return;
+    const element = scrollRef.value;
+    if (!element) return;
+    const id = agent.currentId;
+    const top = element.getBoundingClientRect().top;
+    const anchor = [...innerRef.value.children].find((child) => !child.classList.contains('chip') && child.getBoundingClientRect().bottom > top);
+    const anchorTop = anchor?.getBoundingClientRect().top;
+    const height = element.scrollHeight;
+    paging = true;
+    try {
+        const loaded = await agent.loadOlder();
+        await nextTick();
+        if (loaded && id === agent.currentId && scrollRef.value === element) {
+            element.scrollTop += anchor?.isConnected ? anchor.getBoundingClientRect().top - anchorTop : element.scrollHeight - height;
+        }
+    } finally { paging = false; }
+}
 
 function onScroll() {
     const element = scrollRef.value;
     if (!element) return;
     stick = element.scrollHeight - element.scrollTop - element.clientHeight < 80;
     if (element.scrollTop < 60 && agent.hasMore && !agent.loadingOlder) {
-        restoreFromTop = element.scrollHeight;
-        void agent.loadOlder();
+        void loadMore();
     }
 }
 
@@ -143,10 +176,7 @@ onMounted(() => {
     const element = scrollRef.value;
     element.scrollTop = element.scrollHeight;
     observer = new ResizeObserver(() => {
-        if (restoreFromTop) {
-            element.scrollTop = element.scrollHeight - restoreFromTop;
-            restoreFromTop = 0;
-        } else if (stick) {
+        if (!paging && stick) {
             element.scrollTop = element.scrollHeight;
         }
     });
@@ -157,7 +187,6 @@ onBeforeUnmount(() => observer?.disconnect());
 // 切对话 / 自己发消息：强制回底并重新粘上
 watch(() => agent.viewSeq, () => {
     stick = true;
-    restoreFromTop = 0;
     nextTick(() => {
         const element = scrollRef.value;
         if (element) element.scrollTop = element.scrollHeight;
@@ -169,7 +198,7 @@ watch(() => [agent.ready, agent.hasMore, agent.loadingOlder, rows.value.length],
     if (!agent.ready || !agent.hasMore || agent.loadingOlder || !rows.value.length) return;
     nextTick(() => {
         const element = scrollRef.value;
-        if (element && element.scrollHeight <= element.clientHeight + 40) void agent.loadOlder();
+        if (element && element.scrollHeight <= element.clientHeight + 40) void loadMore();
     });
 });
 </script>
@@ -178,15 +207,20 @@ watch(() => [agent.ready, agent.hasMore, agent.loadingOlder, rows.value.length],
     <main ref="scrollRef" class="stream" @scroll.passive="onScroll">
         <div ref="innerRef" class="stream-inner">
             <span v-if="agent.loadingOlder" class="chip">加载更早的消息…</span>
-            <button v-else-if="agent.hasMore && rows.length" class="chip chip-btn" @click="agent.loadOlder()">查看更早的消息</button>
+            <button v-else-if="agent.hasMore && rows.length" class="chip chip-btn" @click="loadMore">查看更早的消息</button>
 
-            <span v-if="agent.loadError" class="chip chip-bad">{{ agent.loadError }}</span>
+            <button v-if="agent.loadError" class="chip chip-bad chip-btn" @click="agent.openThread(agent.currentId, true)">{{ agent.loadError }}，点击重试</button>
             <span v-else-if="!agent.ready && !rows.length" class="chip">正在打开对话…</span>
 
-            <div v-if="agent.ready && !rows.length" class="blank">
-                <div class="blank-title">这次做点什么？</div>
+            <div v-if="agent.ready && !rows.length && agent.currentTask" class="blank">
+                <div class="blank-title">{{ agent.currentTask.goal }}</div>
+                <div class="blank-sub">任务还没开始写东西。往下发一句话就是给它追加指令。</div>
+            </div>
+            <div v-else-if="agent.ready && !rows.length && agent.kind === 'assistant'" class="blank">
+                <div class="blank-title">有什么交给助理？</div>
                 <div class="blank-sub">
-                    助理能操作所有接入的设备：执行命令、读写文件、操作浏览器。
+                    说清目标，助理会安排任务。执行过程和进度可以在
+                    <button class="link" @click="router.push('/tasks')">任务</button> 应用中查看。
                     <template v-if="agent.status && !agent.status.model_ready">
                         <br />先去 <button class="link" @click="router.push('/settings')">设置</button> 里配置模型。
                     </template>
@@ -219,17 +253,20 @@ watch(() => [agent.ready, agent.hasMore, agent.loadingOlder, rows.value.length],
                     <div class="md" v-html="renderMd(block.row.content)"></div>
                     <div class="act-row" :class="{ always: block.key === lastFinalKey && !agent.busy }">
                         <button class="act" title="复制" @click="copy(block.row.content)"><Icon name="copy" :size="14" /></button>
-                        <span v-if="block.row.tokens !== undefined" class="act-tokens" title="这次模型请求用掉的 token 总数">
-                            {{ block.row.tokens.toLocaleString() }} tokens
+                        <span v-if="block.row.tokens !== undefined" class="act-tokens"
+                            :title="`这次模型请求用掉 ${block.row.tokens.toLocaleString()} tokens` + (block.row.cost ? `，花费 ${money(block.row.cost)}${block.row.cost.peak ? '（高峰价）' : '（空闲价）'}` : '')">
+                            {{ block.row.tokens.toLocaleString() }} tokens<template v-if="money(block.row.cost)"> · {{ money(block.row.cost) }}</template>
                         </span>
                     </div>
                 </div>
 
                 <details v-else-if="block.row.code === 'compacted' && block.row.content" class="compaction">
-                    <summary>已压缩早期对话</summary>
+                    <summary>已压缩早期对话<template v-if="money(block.row.cost)"> · {{ money(block.row.cost) }}</template></summary>
                     <div class="md" v-html="renderMd(block.row.content)"></div>
                 </details>
 
+                <button v-else-if="block.row.code === 'task_notification'" class="chip chip-btn"
+                    @click="router.push({ name: 'tasks', params: { id: block.row.taskId } })">{{ block.row.content }} →</button>
                 <span v-else class="chip" :class="{ 'chip-bad': block.row.code === 'error' }">
                     {{ block.row.code === 'stopped' ? '已停止' : block.row.content }}
                 </span>

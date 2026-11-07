@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from 'vue';
-import { useAgentStore } from '@/stores/agent';
+import { useConversation } from '@/lib/agent/conversation';
 import Icon from './Icon.vue';
 
 const props = defineProps({
@@ -9,7 +9,7 @@ const props = defineProps({
 });
 
 // 展开状态属于当前会话，列表分组和刷新不会丢失。
-const agent = useAgentStore();
+const agent = useConversation();
 const open = computed(() => agent.expanded[props.row.key] === true);
 const toggle = () => { agent.expanded[props.row.key] = !open.value; };
 const thinking = computed(() => Boolean(props.row.streaming && !props.row.content));

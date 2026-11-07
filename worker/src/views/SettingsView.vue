@@ -1,16 +1,16 @@
 <script setup>
 // 助理设置，存在云端 D1（API Key 加密保存）；工具由电脑端执行。
 import { computed, reactive, ref, watch } from 'vue';
-import { useAgentStore } from '@/stores/agent';
+import { useAgentClientStore } from '@/stores/agent-client';
 import { useWsStore } from '@/stores/ws';
 import { useToastStore } from '@/stores/toast';
 
-const agent = useAgentStore();
+const agent = useAgentClientStore();
 const ws = useWsStore();
 const toast = useToastStore();
 
 const NUMBER_FIELDS = ['context_window', 'compact_at', 'keep', 'run_timeout', 'timeout', 'max_output'];
-const TEXT_FIELDS = ['responsesUrl', 'model', 'system', 'compact_system', 'compact_prefix', 'workdir'];
+const TEXT_FIELDS = ['responsesUrl', 'model', 'router_system', 'task_system', 'compact_system', 'compact_prefix', 'workdir'];
 
 const config = ref(null);
 const form = reactive({ apiKey: '' });
@@ -68,11 +68,11 @@ function fill(value) {
 }
 
 async function load() {
-    if (!ws.showActions) return;
+    if (!ws.authenticated) return;
     loadError.value = '';
-    void agent.loadStatus();
     try {
-        fill(await agent.getConfig());
+        const [, value] = await Promise.all([agent.loadStatus(), agent.getConfig()]);
+        fill(value);
     } catch (error) {
         loadError.value = error.message || '设置加载失败';
     }
@@ -86,7 +86,7 @@ const dirty = computed(() => {
 });
 
 async function save() {
-    if (!ws.showActions || saving.value || !dirty.value) return;
+    if (!ws.authenticated || saving.value || !dirty.value) return;
     const patch = {};
     for (const key of TEXT_FIELDS) patch[key] = form[key];
     for (const key of NUMBER_FIELDS) {
@@ -121,14 +121,14 @@ const LABELS = {
     max_output: '工具输出上限',
 };
 
-watch(() => ws.showActions, (online) => { if (online) load(); }, { immediate: true });
+watch(() => [ws.authenticated, ws.showActions], ([authed]) => { if (authed) load(); }, { immediate: true });
 </script>
 
 <template>
     <div class="flex min-h-0 flex-1 flex-col bg-zinc-950">
         <main class="flex-1 min-h-0 overflow-y-auto px-4 py-4">
             <div class="mx-auto w-full max-w-2xl space-y-4">
-                <div v-if="!ws.showActions" class="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4 text-sm text-zinc-500">
+                <div v-if="!ws.authenticated" class="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4 text-sm text-zinc-500">
                     未连接云端，无法读写助理设置。
                 </div>
                 <div v-else-if="loadError" class="rounded-lg border border-red-900/50 bg-red-950/30 p-4 text-sm text-red-300">
@@ -157,12 +157,22 @@ watch(() => ws.showActions, (online) => { if (online) load(); }, { immediate: tr
                                 <input class="field" v-model="form.context_window" inputmode="numeric" />
                                 <span class="field-note">0 表示不限制；填了的话，压缩阈值必须小于它。</span>
                             </label>
-                            <label class="block">
-                                <span class="field-k">系统提示词</span>
-                                <textarea class="field" v-model="form.system" rows="6" spellcheck="false"></textarea>
-                                <span class="field-note" v-pre>支持变量 {{devices}}（全部设备清单，含 id、名字、描述、在线状态）、{{time}}、{{device_status}}。删掉 {{devices}} 助理就不知道有哪些设备。</span>
-                            </label>
+
                         </div>
+                    </section>
+
+                    <section class="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
+                        <h3 class="mb-3 text-xs font-semibold uppercase tracking-wider text-zinc-500">助理与任务</h3>
+                        <label class="block">
+                            <span class="field-k">助理提示词（只派活）</span>
+                            <textarea class="field" v-model="form.router_system" rows="8" spellcheck="false"></textarea>
+                            <span class="field-note" v-pre>「助理」应用使用的提示词。支持 {{devices}}、{{tasks}}（每轮现取的任务快照）、{{time}}、{{device_status}}；删掉 {{tasks}} 助理就看不到任务进度。</span>
+                        </label>
+                        <label class="mt-3 block">
+                            <span class="field-k">任务提示词（只干活）</span>
+                            <textarea class="field" v-model="form.task_system" rows="8" spellcheck="false"></textarea>
+                            <span class="field-note" v-pre>每个任务执行时用的。支持 {{goal}}（派活时写的目标）、{{device}}、{{workdir}}、{{devices}}、{{time}}；创建任务时的目标和任务会话内追加的指令都会交给任务执行者。</span>
+                        </label>
                     </section>
 
                     <section class="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
@@ -276,7 +286,7 @@ watch(() => ws.showActions, (online) => { if (online) load(); }, { immediate: tr
 
                 <section class="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
                     <h3 class="mb-3 text-xs font-semibold uppercase tracking-wider text-zinc-500">关于</h3>
-                    <p class="text-xs leading-relaxed text-zinc-500">本项目把多台电脑的终端 / 文件 / 屏幕带到任意浏览器；AI 助理的会话、消息和配置存在云端 D1 / R2，工具调用按会话或参数指定的设备转发执行。</p>
+                    <p class="text-xs leading-relaxed text-zinc-500">本项目把多台电脑的终端 / 文件 / 屏幕带到任意浏览器；AI 助理的会话、消息和配置存在云端 D1 / R2，工具调用在任务创建时绑定的设备上执行。</p>
                     <dl class="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
                         <dt class="text-zinc-500">连接</dt>
                         <dd class="truncate text-right text-zinc-100">{{ ws.statusText }}</dd>

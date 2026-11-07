@@ -1,7 +1,7 @@
 <script setup>
 // 相邻已完成工具 ≥2 收成一行摘要：文件类按去重后的路径数计，执行类按次数计。
 import { computed } from 'vue';
-import { useAgentStore } from '@/stores/agent';
+import { useConversation } from '@/lib/agent/conversation';
 import { isFailed, toolMeta } from '@/lib/agent/format';
 import Icon from './Icon.vue';
 import ToolItem from './ToolItem.vue';
@@ -10,7 +10,7 @@ const props = defineProps({
     rows: { type: Array, required: true },
 });
 
-const agent = useAgentStore();
+const agent = useConversation();
 const key = computed(() => `group:${props.rows[0].key}`);
 const open = computed(() => agent.expanded[key.value] === true);
 const toggle = () => { agent.expanded[key.value] = !open.value; };
@@ -19,10 +19,11 @@ function groupKind(row) {
     if (row.name === 'read') return 'read';
     if (row.name === 'write') return 'create';
     if (row.name === 'edit') return 'edit';
+    if (row.name === 'computer') return 'desktop';
     return 'exec';
 }
 function groupCount(rows, kind) {
-    if (kind === 'exec') return rows.length;
+    if (kind === 'exec' || kind === 'desktop') return rows.length;
     const paths = new Set();
     for (const row of rows) paths.add(String(row.args?.path ?? '').trim() || row.callId || '');
     return paths.size;
@@ -32,10 +33,11 @@ const TEXT = {
     edit: (n) => `修改了 ${n} 个文件`,
     read: (n) => `读取了 ${n} 个文件`,
     exec: (n) => `执行了 ${n} 条命令`,
+    desktop: (n) => `进行了 ${n} 次桌面操作`,
 };
 const summary = computed(() => {
     const parts = [];
-    for (const kind of ['create', 'edit', 'read', 'exec']) {
+    for (const kind of ['create', 'edit', 'read', 'desktop', 'exec']) {
         const matching = props.rows.filter((row) => groupKind(row) === kind);
         if (matching.length) parts.push(TEXT[kind](groupCount(matching, kind)));
     }
