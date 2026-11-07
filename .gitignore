@@ -17,3 +17,9 @@ worker/wrangler.jsonc
 
 # 电脑端配置 — 复制 computer/config.example.js 到 computer/config.js 后填值
 computer/config.js
+
+# 本地环境变量 / 私有凭据（示例文件除外）
+.env
+.env.*
+!.env.example
+.dev.vars*
