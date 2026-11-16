@@ -23,10 +23,10 @@
 
 各子项目自己的 `package.json` 为准：
 
-- `worker/`：Vite + Wrangler，开发用 `npm run dev`，部署 `npm run deploy`（按用户偏好直接 deploy）。
+- `worker/`：Vite + Cloudflare Vite 插件 + `cf` CLI，开发用 `npm run dev`（`cf dev`），部署 `npm run deploy`（`cf deploy`，按用户偏好直接 deploy）。配置在 `cloudflare.config.ts`（gitignore，模板 `cloudflare.config.example.ts`）；无状态中继，不需要 D1 / R2 / secret。
 - `server/`：看 `server/package.json` 入口。
 
 ## 注意
 
-- 部署 Worker 前 `npx wrangler whoami` 确认账号。
+- 部署 Worker 前 `npx cf auth whoami` 确认账号。
 - 不提交 `node_modules`、`.wrangler`、本地配置和凭据。

@@ -9,11 +9,18 @@ worker/dist/
 .wrangler/
 .aios/
 
-# 私密配置 — 复制 worker/wrangler.example.jsonc 到 worker/wrangler.jsonc 后填值
-worker/wrangler.jsonc
+# 私密配置 — 复制 worker/cloudflare.config.example.ts 到 worker/cloudflare.config.ts 后填值
+worker/cloudflare.config.ts
+worker/.cloudflare/
 
 # 桌面端本地数据库(和 .roam/ 一起在用户 home 下)
 /database/
 
 # 本机 server 配置 — 复制 server/config.example.js 到 server/config.js 后填值
 server/config.js
+
+# 本地环境变量 / 私有凭据（示例文件除外）
+.env
+.env.*
+!.env.example
+.dev.vars*

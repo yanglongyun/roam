@@ -4,12 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev --port 9506",
-    "dev:web": "vite",
-    "build": "vite build",
-    "predeploy": "npm run build",
-    "deploy": "wrangler deploy",
-    "start": "wrangler dev --port 9506",
+    "dev": "cf dev",
+    "build": "cf build",
+    "deploy": "cf deploy",
+    "start": "cf dev",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -21,10 +19,11 @@
     "vue-router": "^4.5.0"
   },
   "devDependencies": {
-    "@tailwindcss/vite": "^4.0.0",
-    "@vitejs/plugin-vue": "^5.2.1",
+    "@cloudflare/vite-plugin": "2.0.0-beta.v.17",
+    "@tailwindcss/vite": "^4.3.5",
+    "@vitejs/plugin-vue": "^6.0.11",
+    "cf": "1.0.0-beta.32",
     "tailwindcss": "^4.0.0",
-    "vite": "^6.0.0",
-    "wrangler": "^4.35.0"
+    "vite": "^7.3.8"
   }
 }

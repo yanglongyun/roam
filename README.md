@@ -49,13 +49,13 @@ Cloudflare Worker (中继,不存数据)
 git clone https://github.com/valueriver/roam
 cd roam/worker
 npm install
-cp wrangler.example.jsonc wrangler.jsonc
+cp cloudflare.config.example.ts cloudflare.config.ts
 ```
 
-编辑 `worker/wrangler.jsonc`:
+编辑 `worker/cloudflare.config.ts`:
 
-- `account_id`:Cloudflare account id,可用 `npx wrangler whoami` 查看
-- `routes`:可选,自定义域名;不用就删掉整个 `routes` 段
+- `accountId`:Cloudflare account id,可用 `npx cf auth whoami` 查看
+- `domains`:可选,自定义域名;不用就删掉整个 `domains` 段
 
 部署:
 
@@ -198,7 +198,7 @@ nssm remove Roam confirm   # 卸载
 - Worker 不保存终端输出、文件内容或任何业务数据
 - 真实数据保留在本机 Server
 - `SESSION_PASSWORD` 用于远程网页访问校验
-- 不要把真实 `server/config.js` 和 `worker/wrangler.jsonc` 提交到仓库
+- 不要把真实 `server/config.js` 和 `worker/cloudflare.config.ts` 提交到仓库
 
 ## License
 
