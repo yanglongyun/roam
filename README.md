@@ -34,6 +34,7 @@ Cloudflare Worker (中继,不存数据)
 
 - 远程终端
 - 文件浏览、读取、上传、重命名、删除
+- Markdown / HTML 文件直接预览(可切换源码)
 - 屏幕截图查看
 - 固定远程连接 session id
 

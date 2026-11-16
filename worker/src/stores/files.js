@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
+import { marked } from 'marked';
 import { useToastStore } from './toast';
 import { useFsClient } from '@/composables/useFsClient';
 
@@ -134,15 +135,17 @@ export const useFilesStore = defineStore('files', () => {
     function closeActionSheet() { actionSheet.value = null; }
 
     function inferKind(mime, name) {
+        const ext = name.split('.').pop()?.toLowerCase() || '';
+        if (ext === 'md' || ext === 'markdown') return 'markdown';
+        if (ext === 'html' || ext === 'htm') return 'html';
         mime = mime || '';
         if (mime.startsWith('image/')) return 'image';
         if (mime.startsWith('text/')) return 'text';
         if (mime === 'application/json' || mime === 'application/xml') return 'text';
-        const ext = name.split('.').pop()?.toLowerCase() || '';
         const codeExts = new Set([
             'js','mjs','ts','tsx','jsx','py','rb','go','rs','java','c','cpp','h','hpp',
-            'sh','zsh','bash','yml','yaml','toml','ini','conf','md','txt','log','env',
-            'html','htm','css','scss','less','vue','svelte','sql','gitignore','dockerfile',
+            'sh','zsh','bash','yml','yaml','toml','ini','conf','txt','log','env',
+            'css','scss','less','vue','svelte','sql','gitignore','dockerfile',
         ]);
         if (codeExts.has(ext)) return 'text';
         return 'other';
@@ -158,6 +161,10 @@ export const useFilesStore = defineStore('files', () => {
             if (kind === 'text') {
                 const text = await blob.text();
                 preview.value = { name: entry.name, size: entry.size, mime, kind, content: text, path: p, blob };
+            } else if (kind === 'markdown' || kind === 'html') {
+                const text = await blob.text();
+                const doc = kind === 'markdown' ? markdownDoc(marked.parse(text)) : text;
+                preview.value = { name: entry.name, size: entry.size, mime, kind, content: text, doc, mode: 'rendered', blob, path: p };
             } else if (kind === 'image') {
                 const url = URL.createObjectURL(blob);
                 preview.value = { name: entry.name, size: entry.size, mime, kind, url, blob, path: p };
@@ -167,6 +174,10 @@ export const useFilesStore = defineStore('files', () => {
         } catch (e) {
             preview.value = { name: entry.name, size: entry.size, mime: '', kind: 'error', error: e.message, path: p };
         }
+    }
+
+    function setPreviewMode(mode) {
+        if (preview.value) preview.value = { ...preview.value, mode };
     }
 
     function closePreview() {
@@ -301,12 +312,39 @@ export const useFilesStore = defineStore('files', () => {
         preview, actionSheet, breadcrumbs,
         filterText, sortBy, sortDir, setSort,
         ensureLoaded, refresh, navigate, goUp, goHome, toggleHidden,
-        openEntry, openPreview, closePreview, downloadPreview,
+        openEntry, openPreview, closePreview, downloadPreview, setPreviewMode,
         openActionSheet, closeActionSheet,
         downloadEntry, deleteEntry, renameEntry,
         createFolder, createFile, copyCurrentPath, uploadFiles,
     };
 });
+
+// Markdown 预览文档：深色排版，渲染结果放进 sandbox iframe，与 roam 页面隔离
+function markdownDoc(bodyHtml) {
+    return `<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root { color-scheme: dark; }
+body { max-width: 820px; margin: 0 auto; padding: 24px 20px; background: #18181b; color: #e4e4e7;
+  font: 15px/1.75 -apple-system, "PingFang SC", "Helvetica Neue", "Segoe UI", sans-serif; }
+h1,h2,h3,h4 { color: #fafafa; line-height: 1.35; margin: 1.4em 0 .6em; }
+h1 { font-size: 1.7em; border-bottom: 1px solid #3f3f46; padding-bottom: .3em; }
+h2 { font-size: 1.4em; border-bottom: 1px solid #27272a; padding-bottom: .25em; }
+a { color: #6ee7b7; }
+p { margin: .7em 0; }
+code { background: #27272a; border-radius: 4px; padding: .15em .4em; font: .88em ui-monospace, SFMono-Regular, Menlo, monospace; }
+pre { background: #09090b; border: 1px solid #27272a; border-radius: 8px; padding: 14px; overflow: auto; }
+pre code { background: none; padding: 0; }
+blockquote { margin: 1em 0; padding: .1em 1em; border-left: 3px solid #52525b; color: #a1a1aa; }
+table { border-collapse: collapse; margin: 1em 0; display: block; overflow-x: auto; }
+th,td { border: 1px solid #3f3f46; padding: 6px 12px; }
+th { background: #27272a; }
+img { max-width: 100%; }
+ul,ol { padding-left: 1.6em; }
+hr { border: none; border-top: 1px solid #3f3f46; margin: 2em 0; }
+</style></head><body>${bodyHtml}</body></html>`;
+}
 
 export function humanSize(bytes) {
     if (bytes == null) return '';

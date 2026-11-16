@@ -17,7 +17,7 @@
 
 ## 能力
 
-- 远程终端、文件浏览/读取/上传/重命名/删除、屏幕截图、固定 session id。
+- 远程终端、文件浏览/读取/上传/重命名/删除（Markdown / HTML 渲染预览，sandbox iframe 隔离）、屏幕截图、固定 session id。
 
 ## 命令
 
